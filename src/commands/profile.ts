@@ -1,11 +1,19 @@
 import { ChatInputCommandInteraction, EmbedBuilder } from "discord.js";
 import { MemberService } from "../services/member-service.js";
+import type { ClassService } from "../services/class-service.js";
 
-export async function handleProfile(interaction: ChatInputCommandInteraction, service: MemberService) {
+export async function handleProfile(
+  interaction: ChatInputCommandInteraction,
+  service: MemberService,
+  classService: ClassService
+) {
   const discordId = interaction.user.id;
   const m = await service.profile(discordId);
+  
+  const display = await classService.formatPlayerDisplay(m);
+  
   const embed = new EmbedBuilder()
-    .setTitle(`${m.characterName}`)
+    .setTitle(`${display.text}`)
     .addFields(
       { name: "Class", value: m.className || "-", inline: true },
       { name: "Team", value: m.team || "-", inline: true },

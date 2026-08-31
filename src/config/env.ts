@@ -8,6 +8,8 @@ const schema = z.object({
   GOOGLE_SHEET_ID: z.string().min(1),
   GOOGLE_SERVICE_ACCOUNT_EMAIL: z.string().email(),
   GOOGLE_PRIVATE_KEY: z.string().min(1),
+  ASSIGN_ROLE_IDS: z.string().min(1),
+  ENABLE_MEMBERS_INTENT: z.string().optional().default("false"),
 });
 
 const parsed = schema.safeParse(process.env);
@@ -19,4 +21,6 @@ if (!parsed.success) {
 export const env = {
   ...parsed.data,
   GOOGLE_PRIVATE_KEY: parsed.data.GOOGLE_PRIVATE_KEY.replace(/\\n/g, "\n"),
+  ASSIGN_ROLE_IDS: parsed.data.ASSIGN_ROLE_IDS.split(",").map((id) => id.trim()).filter(Boolean),
+  ENABLE_MEMBERS_INTENT: parsed.data.ENABLE_MEMBERS_INTENT === "true",
 };

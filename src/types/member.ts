@@ -19,10 +19,13 @@ export interface LegacyMember {
   source: string;
   matchStatus: string;
   notes: string;
+  linkedMemberId?: string;
+  linkedDiscordId?: string;
+  linkedAt?: string;
 }
 
 export interface HistoryEntry {
-  type: "name" | "class";
+  type: "name" | "class" | "team" | "party";
   historyId: string;
   memberId: string;
   discordId: string;
