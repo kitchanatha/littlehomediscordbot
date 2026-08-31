@@ -1,5 +1,6 @@
-import { google, sheets_v4 } from "googleapis";
+import { sheets_v4 } from "googleapis";
 import { env } from "../config/env.js";
+import { sheetsClient } from "../google/sheets-client.js";
 import type { HistoryEntry, LegacyMember, Member } from "../types/member.js";
 import { normalizeName } from "../utils/normalize.js";
 import type { MemberRepository } from "./member-repository.js";
@@ -13,18 +14,9 @@ const SHEETS = {
 } as const;
 
 export class GoogleSheetsMemberRepository implements MemberRepository {
-  private readonly sheets: sheets_v4.Sheets;
+  private readonly sheets: sheets_v4.Sheets = sheetsClient;
   private readonly spreadsheetId = env.GOOGLE_SHEET_ID;
   private sheetIds = new Map<string, number>();
-
-  constructor() {
-    const auth = new google.auth.JWT({
-      email: env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-      key: env.GOOGLE_PRIVATE_KEY,
-      scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-    });
-    this.sheets = google.sheets({ version: "v4", auth });
-  }
 
   private async values(range: string): Promise<string[][]> {
     const response = await this.sheets.spreadsheets.values.get({
