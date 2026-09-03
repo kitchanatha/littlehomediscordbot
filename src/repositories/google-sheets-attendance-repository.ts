@@ -141,19 +141,30 @@ export class GoogleSheetsAttendanceRepository implements AttendanceRepository {
     const idx = columnValues.findIndex((v) => normalizeName(v) === target);
     if (idx >= 0) return idx + 2; // header is row 1; column data starts at A2
 
-    const nextRow = columnValues.length + 2;
-    await this.ensureRowCapacity(sheetName, sheetId, nextRow);
+    // spreadsheets.values.append with insertDataOption=INSERT_ROWS has a real Google Sheets API
+    // bug: a column-restricted range (e.g. "B:B") is ignored for the actual write position, and
+    // the value silently lands in column A instead — confirmed by testing directly against the
+    // live sheet (updatedRange came back as "A165" for a "B:B" append). Appending a full-width
+    // padded row (empty cells up to nameCol, then the name) against an unrestricted range keeps
+    // Google's atomic server-side row allocation (avoiding a race between concurrent check-ins
+    // that a client-computed row number would risk) while landing the name in the right column.
+    const padded: string[] = new Array(nameCol).fill("");
+    padded.push(name);
 
     const appendResponse = await this.sheets.spreadsheets.values.append({
       spreadsheetId: this.spreadsheetId,
-      range: `${sheetName}!${letter}:${letter}`,
+      range: `${sheetName}!A:Z`,
       valueInputOption: "RAW",
       insertDataOption: "INSERT_ROWS",
-      requestBody: { values: [[name]] },
+      requestBody: { values: [padded] },
     });
 
+    // updatedRange is like "'Sheet'!A165:B165" (multi-column) or "'Sheet'!A165" (single column,
+    // when nameCol is 0) — take the last ":"-segment so a greedy digit match can't eat into the
+    // row number ambiguously either way.
     const updatedRange = appendResponse.data.updates?.updatedRange ?? "";
-    const rowMatch = /![A-Z]+(\d+)/.exec(updatedRange);
+    const lastPart = updatedRange.split(":").pop() ?? "";
+    const rowMatch = /(\d+)$/.exec(lastPart);
     if (!rowMatch) throw new Error(`Could not determine the row Google Sheets used for "${name}" in ${sheetName}`);
     return parseInt(rowMatch[1], 10);
   }
