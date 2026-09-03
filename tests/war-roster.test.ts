@@ -65,7 +65,7 @@ describe("WarRosterService", () => {
 
   it("ignores invalid teams and parties", async () => {
      repository.getAllActiveMembers.mockResolvedValue([
-      { characterName: "Invalid", team: "D", party: "1", status: "Active" },
+      { characterName: "Invalid", team: "Z", party: "1", status: "Active" },
       { characterName: "NoParty", team: "A", party: "", status: "Active" },
       { characterName: "ZeroParty", team: "B", party: "0", status: "Active" },
     ]);

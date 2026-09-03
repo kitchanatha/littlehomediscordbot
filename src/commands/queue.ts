@@ -125,7 +125,7 @@ export async function handleQueueList(interaction: ChatInputCommandInteraction, 
 }
 
 export async function handleQueueAdd(interaction: ChatInputCommandInteraction, service: QueueService) {
-  const member = interaction.options.getMember("member") as GuildMember;
+  const targetUser = interaction.options.getUser("member", true);
   const type = interaction.options.getString("type", true) as QueueType;
 
   const callerRoles = (interaction.member as GuildMember).roles.cache;
@@ -138,13 +138,13 @@ export async function handleQueueAdd(interaction: ChatInputCommandInteraction, s
 
   try {
     const entry = await service.enqueue({
-      targetDiscordId: member.id,
+      targetDiscordId: targetUser.id,
       queueType: type,
       changedByDiscordId: interaction.user.id,
     });
 
     await interaction.editReply({
-      content: `✅ Added ${member.user.toString()} to ${type} queue.\nPosition: #${entry.position}`,
+      content: `✅ Added ${targetUser.toString()} to ${type} queue.\nPosition: #${entry.position}`,
     });
   } catch (error: any) {
     if (error instanceof UserError) {
@@ -157,7 +157,7 @@ export async function handleQueueAdd(interaction: ChatInputCommandInteraction, s
 }
 
 export async function handleQueueRemove(interaction: ChatInputCommandInteraction, service: QueueService) {
-  const member = interaction.options.getMember("member") as GuildMember;
+  const targetUser = interaction.options.getUser("member", true);
   const type = interaction.options.getString("type", true) as QueueType;
 
   const callerRoles = (interaction.member as GuildMember).roles.cache;
@@ -170,14 +170,14 @@ export async function handleQueueRemove(interaction: ChatInputCommandInteraction
 
   try {
     const result = await service.dequeue({
-      targetDiscordId: member.id,
+      targetDiscordId: targetUser.id,
       queueType: type,
       changedByDiscordId: interaction.user.id,
     });
 
     const cooldownDate = new Date(result.cooldownUntil);
     await interaction.editReply({
-      content: `✅ Removed ${member.user.toString()} from ${type} queue.\nCooldown until: ${cooldownDate.toLocaleString()}`,
+      content: `✅ Removed ${targetUser.toString()} from ${type} queue.\nCooldown until: ${cooldownDate.toLocaleString()}`,
     });
   } catch (error: any) {
     if (error instanceof UserError) {

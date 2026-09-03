@@ -50,6 +50,10 @@ class FakeRepo implements MemberRepository {
   async getAllMembers() { return this.members; }
   async getAllDiscordIds() { return this.members.map(m => m.discordId); }
   async createMembersBulk(members: Member[]) { this.members.push(...members); }
+  gameRoster = new Map<string, string>();
+  combatPowerWrites: { memberId: string; combatPower: string }[] = [];
+  async findGameRosterCombatPower(characterName: string) { return this.gameRoster.get(normalizeName(characterName)) ?? null; }
+  async setCombatPower(memberId: string, combatPower: string) { this.combatPowerWrites.push({ memberId, combatPower }); }
   async updateMemberStatus(m: Member, status: string, lastUpdated: string, audit: any, newUsername?: string) {
     const i = this.members.findIndex(member => member.memberId === m.memberId);
     if (i >= 0) {
@@ -120,6 +124,23 @@ describe("MemberService", () => {
     expect(result.member.className).toBe("Hunter");
     expect(result.member.team).toBe("");
     expect(result.member.party).toBe("");
+  });
+
+  it("carries over combat power from the game roster on registration", async () => {
+    const repo = new FakeRepo();
+    repo.gameRoster.set(normalizeName("NewGuy"), "39700");
+    const { service } = createServices(repo);
+    const result = await service.register({ discordId: "456", discordUsername: "newbie", characterName: "NewGuy", className: "Hunter" });
+
+    expect(repo.combatPowerWrites).toEqual([{ memberId: result.member.memberId, combatPower: "39700" }]);
+  });
+
+  it("does not write combat power when the character isn't in the game roster", async () => {
+    const repo = new FakeRepo();
+    const { service } = createServices(repo);
+    await service.register({ discordId: "456", discordUsername: "newbie", characterName: "NewGuy", className: "Hunter" });
+
+    expect(repo.combatPowerWrites).toEqual([]);
   });
 
   it("rejects duplicate registration with name_class message", async () => {
@@ -284,11 +305,11 @@ describe("MemberService", () => {
         .rejects.toThrow("not registered");
     });
 
-    it("validates team (A, B, or C)", async () => {
+    it("validates team (A, B, C, or D)", async () => {
       const repo = new FakeRepo();
       const { service } = createServices(repo);
       await service.register({ discordId: "123", discordUsername: "user", characterName: "Piko", className: "Knight" });
-      await expect(service.assignMember({ targetDiscordId: "123", team: "D", party: 1, adminDiscordId: "admin" }))
+      await expect(service.assignMember({ targetDiscordId: "123", team: "Z", party: 1, adminDiscordId: "admin" }))
         .rejects.toThrow("Invalid team");
     });
 

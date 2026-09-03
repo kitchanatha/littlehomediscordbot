@@ -59,6 +59,8 @@ class FakeRepo implements MemberRepository {
   }
   async validateReadiness() {}
   async getClassConfigs() { return []; }
+  async findGameRosterCombatPower() { return null; }
+  async setCombatPower() {}
 }
 
 describe("MemberService.updateNameAndClass", () => {

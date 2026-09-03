@@ -5,9 +5,10 @@ Comprehensive Discord bot for guild management using Google Sheets as a database
 ## Features
 
 - **Profile Management**: `/register`, `/name_class`, `/profile`, `/history`.
-- **Assignment System**: `/assign` Team and Party (Admin only).
+- **Assignment System**: `/assign` Team (A, B, C, or D) and Party (Admin only).
 - **Sunday War Roster**: `/war_roster` with automatic updates.
-- **Card & Accessory Queues**: `/queue_join`, `/queue_status`, `/queue_list`, etc., with a 3-day cooldown.
+- **Card & Accessory Queues**: `/queue_join`, `/queue_status`, `/queue_list`, etc., with a 3-day cooldown, mirrored to two separate sheets (`คิวการ์ดประดับ` for Card, `คิวประดับ` for Accessory).
+- **War Attendance**: joining a configured War voice channel automatically marks a member present (`มา`) on both the attendance sheet and their class tab; `/war_checkin` is a manual fallback and `/war_leave` lets a member self-report an absence (`แจ้งลาแล้ว`).
 - **Visual Display Sync**: Automatic class symbols and background colors across all player-facing sheets.
 - **Membership Automation**: Automatic status tracking when members leave/rejoin the Discord server.
 
@@ -19,11 +20,11 @@ Discord User ID is the permanent member identity. Character name is editable and
 
 ## Google Sheet used
 
-Set `GOOGLE_SHEET_ID` to:
+Set `GOOGLE_SHEET_ID` to the ID of your guild's Google Sheet (the long ID in its URL).
 
-`1DEC5SjzqWXnAD-mySk-MQPIeteS8ETGlNBpG4EM9jW4`
+The bot uses two kinds of tabs in that sheet:
 
-The Phase 2 bot uses these tabs:
+**Internal (bot-managed, not meant to be hand-edited):**
 
 - `Members`
 - `Name_History`
@@ -35,7 +36,18 @@ The Phase 2 bot uses these tabs:
 - `Audit_Log`
 - `Queue_Entries`
 - `Queue_History`
-- `คิวการ์ด คิวประดับ` (Visual Queue Display)
+
+**Player-facing (the guild's original layout, kept exactly as-is — the bot only edits cell text/color/attendance marks in these, never the structure):**
+
+- `รายชื่อตี้วอร์ห้องหลัก` (main war room roster)
+- `ตี้วอร์วันอาทิตย์` (weekly Sunday War lineup)
+- `รายชื่ออีลิทตีอบอสวันอาทิตย์` (elite boss roster)
+- `เช็คขาด-ลา` (attendance)
+- `Knight`, `Paladin`, `Hunter`, `Assassin`, `Wizard`, `Priest`, `Monk`, `Blacksmith`, `Gunslinger`, `Druid` (one tab per class, also used for attendance)
+- `คิวการ์ดประดับ` (Card queue display)
+- `คิวประดับ` (Accessory queue display)
+
+These names must match the tabs that actually exist in the connected Sheet exactly (including spacing/punctuation) — the bot does not create these player-facing tabs itself.
 
 `Legacy_Members` is read during first registration. If the character name matches an old guild member, the bot carries over Class, Team, and Party. The new `Members` row is still keyed by Discord ID.
 
@@ -76,6 +88,16 @@ The bot automatically handles members leaving or joining the configured Discord 
 - **Reconciliation**: On startup, if `ENABLE_MEMBERS_INTENT` is `true`, the bot compares the current server members with the spreadsheet and marks any missing members as `Left`.
 
 All membership changes are recorded in the `Audit_Log` with the actor `SYSTEM`.
+
+## War Attendance (Check-in / Leave)
+
+Optional — leave `WAR_CHECKIN_VOICE_CHANNEL_IDS` blank to disable entirely.
+
+- Set `WAR_CHECKIN_VOICE_CHANNEL_IDS` to a comma-separated list of the War voice channel IDs (e.g. `1535489015187513354,1535489924231462973`). Enable **Server Members Intent** is not required for this, but the bot does need to actually be in the server; when this variable is set the bot requests the `GuildVoiceStates` intent automatically.
+- A member joining any of those voice channels is marked present (`มา`) for today's War, on both the `เช็คขาด-ลา` sheet and their class tab. No command needed.
+- `/war_checkin` is a manual fallback for anyone the automatic check-in misses (e.g. already in the channel when the bot restarted).
+- `/war_leave` lets a member self-report an absence (`แจ้งลาแล้ว`) ahead of time. Set `WAR_LEAVE_CHANNEL_ID` to restrict it to one text channel (e.g. `1535950902421102622`); leave it blank to allow it anywhere.
+- Attendance columns are matched by date, tolerant of the guild's existing inconsistent header formatting (`war 31/7/69`, `War  13/8/69`, ...). New columns the bot creates always use `War D/M/YY` (Buddhist year), added automatically if today's date has no column yet.
 
 ## 4. Create Google service account
 
@@ -209,6 +231,8 @@ Expected: member's default guild assignment is updated, history and audit log ar
 | `/queue_list` | Yes | Yes | Yes |
 | `/queue_add` | No | No | Yes |
 | `/queue_remove` | No | No | Yes |
+| `/war_checkin` | Yes | Yes | Yes |
+| `/war_leave` | Yes | Yes | Yes |
 
 Note: `ASSIGN_ROLE_IDS` must be configured in `.env`. Multiple role IDs can be separated by commas.
 
@@ -221,9 +245,9 @@ npm test
 ## Important Phase 1 limitations
 
 - No `/team` or `/party` command yet.
-- No event or attendance commands yet.
 - Legacy matching is intentionally conservative; the bot does not guess uncertain identities.
 - Real Discord and Google credentials are required before the bot can run end-to-end.
+- Auto check-in only fires on a voice-channel *join*; a member already sitting in the channel when the bot (re)starts needs to run `/war_checkin` manually once.
 
 ### Concurrency and ID Generation
 

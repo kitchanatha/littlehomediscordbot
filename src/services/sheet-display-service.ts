@@ -3,12 +3,13 @@ import type { SheetDisplayRepository } from "../repositories/display-repository.
 import type { ClassService } from "./class-service.js";
 import type { Member } from "../types/member.js";
 
+// Must match the guild's actual Google Sheet tab names exactly
+// (migrated from "Little Home War 2.xlsx").
 const PLAYER_FACING_SHEETS = [
-  "War_Roster_Template",
-  "รายชื่อห้องวอห้องหลัก",
-  "รายชื่อ elite บอสวันอาทิตย์",
-  "ตี้วอวันอาทิตย์",
-  "เช็คขาดลา",
+  "รายชื่อตี้วอร์ห้องหลัก",
+  "รายชื่ออีลิทตีอบอสวันอาทิตย์",
+  "ตี้วอร์วันอาทิตย์",
+  "เช็คขาด-ลา",
 ];
 
 const CLASS_TABS = [

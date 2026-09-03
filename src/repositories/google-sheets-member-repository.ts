@@ -17,10 +17,19 @@ const SHEETS = {
   auditLog: "Audit_Log",
 } as const;
 
+// Transcribed in-game roster data (see src/scripts/update-combat-power.ts). Deliberately NOT
+// part of SHEETS above: that list is required at startup (validateReadiness), and this sheet
+// is a nice-to-have data source, not core to the bot working — its absence should degrade
+// gracefully, not take the whole bot down.
+const GAME_ROSTER_SHEET = "Game_Roster_CombatPower";
+const MEMBERS_COMBAT_POWER_COL = "K";
+const MEMBERS_COMBAT_POWER_COL_INDEX0 = 10; // K is the 11th column, 0-indexed 10
+
 export class GoogleSheetsMemberRepository implements MemberRepository {
   private readonly sheets: sheets_v4.Sheets = sheetsClient;
   private readonly spreadsheetId = env.GOOGLE_SHEET_ID;
   private sheetIds = new Map<string, number>();
+  private sheetColumnCounts = new Map<string, number>();
 
   private async values(range: string): Promise<string[][]> {
     const response = await this.sheets.spreadsheets.values.get({
@@ -36,7 +45,11 @@ export class GoogleSheetsMemberRepository implements MemberRepository {
     for (const sheet of response.data.sheets ?? []) {
       const title = sheet.properties?.title;
       const id = sheet.properties?.sheetId;
-      if (title && id !== undefined && id !== null) this.sheetIds.set(title, id);
+      if (title && id !== undefined && id !== null) {
+        this.sheetIds.set(title, id);
+        const columnCount = sheet.properties?.gridProperties?.columnCount;
+        if (columnCount) this.sheetColumnCounts.set(title, columnCount);
+      }
     }
   }
 
@@ -688,5 +701,52 @@ export class GoogleSheetsMemberRepository implements MemberRepository {
     if (missing.length > 0) {
       throw new Error(`Member database is not initialized: missing sheet(s) ${missing.join(", ")}`);
     }
+  }
+
+  async findGameRosterCombatPower(characterName: string): Promise<string | null> {
+    let rows: string[][];
+    try {
+      rows = await this.values(`${GAME_ROSTER_SHEET}!A2:B`);
+    } catch {
+      return null; // sheet doesn't exist yet — not fatal, just nothing to carry over
+    }
+    const target = normalizeName(characterName);
+    const match = rows.find((r) => normalizeName(r[0] ?? "") === target);
+    return match?.[1] ?? null;
+  }
+
+  async setCombatPower(memberId: string, combatPower: string): Promise<void> {
+    await this.ensureSheetIds();
+    const membersSheetId = this.sheetIds.get(SHEETS.members);
+    if (membersSheetId === undefined) throw new Error(`Sheet "${SHEETS.members}" not found`);
+
+    const currentColumnCount = this.sheetColumnCounts.get(SHEETS.members) ?? 0;
+    if (currentColumnCount <= MEMBERS_COMBAT_POWER_COL_INDEX0) {
+      await this.sheets.spreadsheets.batchUpdate({
+        spreadsheetId: this.spreadsheetId,
+        requestBody: {
+          requests: [{
+            appendDimension: {
+              sheetId: membersSheetId,
+              dimension: "COLUMNS",
+              length: MEMBERS_COMBAT_POWER_COL_INDEX0 + 1 - currentColumnCount,
+            },
+          }],
+        },
+      });
+      this.sheetColumnCounts.set(SHEETS.members, MEMBERS_COMBAT_POWER_COL_INDEX0 + 1);
+    }
+
+    const rows = await this.values(`${SHEETS.members}!A2:A`);
+    const index = rows.findIndex((r) => r[0] === memberId);
+    if (index < 0) throw new Error(`Member "${memberId}" not found`);
+    const rowNumber = index + 2; // header row + 0-index
+
+    await this.sheets.spreadsheets.values.update({
+      spreadsheetId: this.spreadsheetId,
+      range: `${SHEETS.members}!${MEMBERS_COMBAT_POWER_COL}${rowNumber}`,
+      valueInputOption: "RAW",
+      requestBody: { values: [[combatPower]] },
+    });
   }
 }

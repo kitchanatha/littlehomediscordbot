@@ -32,4 +32,9 @@ export interface MemberRepository {
   ): Promise<void>;
   getAllMembers(): Promise<Member[]>;
   validateReadiness(): Promise<void>;
+  // Looks up a character's combat power ("Gear Rating") from the transcribed in-game roster
+  // (Game_Roster_CombatPower), independent of Discord registration. Returns null if that
+  // character isn't in the transcribed roster yet.
+  findGameRosterCombatPower(characterName: string): Promise<string | null>;
+  setCombatPower(memberId: string, combatPower: string): Promise<void>;
 }

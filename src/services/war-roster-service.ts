@@ -1,5 +1,6 @@
 import { MemberRepository } from "../repositories/member-repository.js";
 import { WarRoster, TeamGroup, PartyGroup } from "../types/war-roster.js";
+import { VALID_TEAMS } from "../types/member.js";
 import type { ClassService } from "./class-service.js";
 
 export class WarRosterService {
@@ -18,8 +19,8 @@ export class WarRosterService {
       const partyStr = (member.party || "").trim();
       const party = parseInt(partyStr);
 
-      // Validation: Team must be A, B, or C to be on the roster (based on spec)
-      if (!["A", "B", "C"].includes(team)) continue;
+      // Validation: team must be one of the guild's real teams to be on the roster
+      if (!VALID_TEAMS.includes(team as (typeof VALID_TEAMS)[number])) continue;
       if (isNaN(party) || party < 1) continue;
 
       // Apply filters

@@ -22,9 +22,9 @@ export const commandDefinitions = [
     .addUserOption((o) => o.setName("member").setDescription("The Discord user to assign").setRequired(true))
     .addStringOption((o) =>
       o.setName("team")
-        .setDescription("The team (A, B, or C)")
+        .setDescription("The team (A, B, C, or D)")
         .setRequired(true)
-        .addChoices({ name: "A", value: "A" }, { name: "B", value: "B" }, { name: "C", value: "C" })
+        .addChoices({ name: "A", value: "A" }, { name: "B", value: "B" }, { name: "C", value: "C" }, { name: "D", value: "D" })
     )
     .addIntegerOption((o) => o.setName("party").setDescription("The party number (1+)").setRequired(true).setMinValue(1)),
   new SlashCommandBuilder()
@@ -32,8 +32,8 @@ export const commandDefinitions = [
     .setDescription("Show the Sunday War roster")
     .addStringOption((o) =>
       o.setName("team")
-        .setDescription("Filter by team (A, B, or C)")
-        .addChoices({ name: "A", value: "A" }, { name: "B", value: "B" }, { name: "C", value: "C" })
+        .setDescription("Filter by team (A, B, C, or D)")
+        .addChoices({ name: "A", value: "A" }, { name: "B", value: "B" }, { name: "C", value: "C" }, { name: "D", value: "D" })
     )
     .addIntegerOption((o) => o.setName("party").setDescription("Filter by party number (1+)").setMinValue(1)),
   new SlashCommandBuilder()
@@ -46,6 +46,12 @@ export const commandDefinitions = [
     .setName("register_all")
     .setDescription("Register all server members as Pending (Admin only)")
     .addRoleOption((o) => o.setName("role").setDescription("Optional role filter")),
+  new SlashCommandBuilder()
+    .setName("war_checkin")
+    .setDescription("Manually check in for today's War (usually automatic via voice channel)"),
+  new SlashCommandBuilder()
+    .setName("war_leave")
+    .setDescription("Let the guild know you can't make today's War"),
   new SlashCommandBuilder()
     .setName("queue_join")
     .setDescription("Join a queue")

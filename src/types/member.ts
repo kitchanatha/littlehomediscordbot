@@ -1,3 +1,7 @@
+// Team A/B/C are the "main room" (ห้องหลัก); Team D is the secondary/overflow room
+// (ห้องรอง) — both are real, active teams in the guild's roster.
+export const VALID_TEAMS = ["A", "B", "C", "D"] as const;
+
 export interface Member {
   memberId: string;
   discordId: string;

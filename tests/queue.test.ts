@@ -80,6 +80,8 @@ class FakeMemberRepo implements MemberRepository {
   async createMembersBulk() {}
   async validateReadiness() {}
   async getClassConfigs() { return []; }
+  async findGameRosterCombatPower() { return null; }
+  async setCombatPower() {}
 }
 
 describe("QueueService", () => {

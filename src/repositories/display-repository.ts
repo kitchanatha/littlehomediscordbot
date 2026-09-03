@@ -4,12 +4,13 @@ import { sheetsClient } from "../google/sheets-client.js";
 import { hexToRgb } from "../utils/color.js";
 import type { PlayerDisplay } from "../types/class.js";
 
+// These must match the guild's actual Google Sheet tab names exactly
+// (see "Little Home War 2.xlsx" for the source layout these were migrated from).
 const SHEETS = {
-  warRosterTemplate: "War_Roster_Template",
-  mainWarRoster: "รายชื่อห้องวอห้องหลัก",
-  eliteBoss: "รายชื่อ elite บอสวันอาทิตย์",
-  sundayWar: "ตี้วอวันอาทิตย์",
-  attendance: "เช็คขาดลา",
+  mainWarRoster: "รายชื่อตี้วอร์ห้องหลัก",
+  eliteBoss: "รายชื่ออีลิทตีอบอสวันอาทิตย์",
+  sundayWar: "ตี้วอร์วันอาทิตย์",
+  attendance: "เช็คขาด-ลา",
 } as const;
 
 export interface SheetDisplayRepository {

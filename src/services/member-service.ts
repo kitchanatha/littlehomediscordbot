@@ -1,4 +1,5 @@
 import type { MemberRepository } from "../repositories/member-repository.js";
+import { VALID_TEAMS } from "../types/member.js";
 import type { HistoryEntry, Member } from "../types/member.js";
 import { generateNextId } from "../utils/id.js";
 import { normalizeName } from "../utils/normalize.js";
@@ -63,6 +64,16 @@ export class MemberService {
 
     if (legacy) {
       await this.repository.linkLegacy(legacy.legacyName, input.discordId, memberId, now);
+    }
+
+    // Best-effort carryover from the transcribed in-game roster (see
+    // Game_Roster_CombatPower) — this data source is optional, so a failure here shouldn't
+    // fail the registration itself.
+    try {
+      const combatPower = await this.repository.findGameRosterCombatPower(member.characterName);
+      if (combatPower) await this.repository.setCombatPower(memberId, combatPower);
+    } catch (err) {
+      console.error(`WARN Failed to carry over combat power for ${memberId}`, err);
     }
 
     return { member, legacyLinked: Boolean(legacy) };
@@ -235,7 +246,9 @@ export class MemberService {
     if (!member) throw new UserError("❌ This Discord user is not registered.");
 
     const normalizedTeam = input.team.trim().toUpperCase();
-    if (!["A", "B", "C"].includes(normalizedTeam)) throw new UserError("❌ Invalid team. Allowed values: A, B, C");
+    if (!VALID_TEAMS.includes(normalizedTeam as (typeof VALID_TEAMS)[number])) {
+      throw new UserError(`❌ Invalid team. Allowed values: ${VALID_TEAMS.join(", ")}`);
+    }
 
     if (!Number.isInteger(input.party) || input.party < 1) throw new UserError("❌ Party must be a positive integer.");
 
@@ -304,9 +317,9 @@ export class MemberService {
     return updated;
   }
 
-  async handleGuildMemberRemove(discordId: string): Promise<void> {
+  async handleGuildMemberRemove(discordId: string): Promise<Member | null> {
     const member = await this.repository.findByDiscordId(discordId);
-    if (!member || member.status === "Left") return;
+    if (!member || member.status === "Left") return null;
 
     const now = this.now();
     const audit = {
@@ -330,6 +343,8 @@ export class MemberService {
         console.error("WARN Failed to cleanup member queues after guild leave", err);
       });
     }
+
+    return member;
   }
 
   async handleGuildMemberAdd(discordId: string, discordUsername: string): Promise<void> {
@@ -357,13 +372,23 @@ export class MemberService {
 
     for (const member of activeMembers) {
       if (!guildIdSet.has(member.discordId)) {
-        await this.handleGuildMemberRemove(member.discordId).catch((err) => {
+        // handleGuildMemberRemove does several Sheets API reads/writes (status update +
+        // display refresh across sheets); pace these so reconciling many members at once
+        // (e.g. after a bulk backfill) doesn't blow through the per-minute read quota.
+        if (leftCount > 0) await this.sleep(3000);
+
+        const removed = await this.handleGuildMemberRemove(member.discordId).catch((err) => {
           console.error(`ERROR Reconciliation failed for member ${member.discordId}`, err);
+          return null;
         });
-        leftCount++;
+        if (removed) leftCount++;
       }
     }
 
     return { leftCount };
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
