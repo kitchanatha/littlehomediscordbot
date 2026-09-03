@@ -30,4 +30,18 @@ export class AttendanceService {
     const result = await this.attendanceRepository.markAttendance(member.characterName, member.className, "แจ้งลาแล้ว", new Date());
     return { characterName: member.characterName, dateLabel: result.dateLabel };
   }
+
+  /** For a Discord user who isn't registered yet — recorded separately, resolved once they register. */
+  async checkInUnregistered(discordId: string, displayName: string): Promise<void> {
+    await this.attendanceRepository.recordPendingCheckIn(discordId, displayName, "มา", new Date());
+  }
+
+  /** Call once a Discord user registers: replays any pending check-ins under their real name/class. */
+  async reconcilePendingAttendance(discordId: string, characterName: string, className: string): Promise<number> {
+    const pending = await this.attendanceRepository.resolvePendingCheckIns(discordId);
+    for (const entry of pending) {
+      await this.attendanceRepository.markAttendance(characterName, className, entry.status, entry.at);
+    }
+    return pending.length;
+  }
 }

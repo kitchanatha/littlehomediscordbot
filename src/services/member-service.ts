@@ -6,6 +6,9 @@ import { normalizeName } from "../utils/normalize.js";
 import type { QueueService } from "./queue-service.js";
 import type { ClassService } from "./class-service.js";
 import type { SheetDisplayService } from "./sheet-display-service.js";
+// Type-only: attendance-service.ts imports UserError from this module, so a runtime import
+// here would be circular. `import type` is erased at compile time, so this is safe.
+import type { AttendanceService } from "./attendance-service.js";
 
 export class UserError extends Error {}
 
@@ -14,7 +17,8 @@ export class MemberService {
     private readonly repository: MemberRepository,
     private readonly classService: ClassService,
     private readonly sheetDisplayService: SheetDisplayService,
-    private readonly queueService?: QueueService
+    private readonly queueService?: QueueService,
+    private readonly attendanceService?: AttendanceService
   ) {}
 
   private now(): string {
@@ -74,6 +78,17 @@ export class MemberService {
       if (combatPower) await this.repository.setCombatPower(memberId, combatPower);
     } catch (err) {
       console.error(`WARN Failed to carry over combat power for ${memberId}`, err);
+    }
+
+    // Best-effort: replay any War check-ins recorded while this Discord user was still
+    // unregistered (see AttendanceService.checkInUnregistered / Pending_Attendance).
+    if (this.attendanceService) {
+      try {
+        const count = await this.attendanceService.reconcilePendingAttendance(input.discordId, member.characterName, member.className);
+        if (count > 0) console.log(`INFO Backfilled ${count} pending attendance record(s) for ${member.characterName}`);
+      } catch (err) {
+        console.error(`WARN Failed to reconcile pending attendance for ${memberId}`, err);
+      }
     }
 
     return { member, legacyLinked: Boolean(legacy) };

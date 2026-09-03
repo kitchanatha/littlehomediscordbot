@@ -16,6 +16,10 @@ const MASTER_FIRST_DATE_COL = 2;
 const CLASS_NAME_COL = 0;
 const CLASS_FIRST_DATE_COL = 1;
 
+// Internal, bot-managed sheet holding check-ins from Discord users who aren't registered yet.
+// Created automatically on first use. Auto-created (not part of the guild's original layout).
+const PENDING_SHEET = "Pending_Attendance";
+
 function colLetter(index0: number): string {
   let n = index0 + 1;
   let s = "";
@@ -216,6 +220,76 @@ export class GoogleSheetsAttendanceRepository implements AttendanceRepository {
     }
 
     return { dateLabel, markedMaster, markedClassTab };
+  }
+
+  private async ensurePendingSheetExists(): Promise<number> {
+    await this.ensureSheetIds();
+    let sheetId = this.sheetIds.get(PENDING_SHEET);
+    if (sheetId !== undefined) return sheetId;
+
+    const addRes = await this.sheets.spreadsheets.batchUpdate({
+      spreadsheetId: this.spreadsheetId,
+      requestBody: { requests: [{ addSheet: { properties: { title: PENDING_SHEET } } }] },
+    });
+    sheetId = addRes.data.replies?.[0]?.addSheet?.properties?.sheetId ?? undefined;
+    if (sheetId === undefined) throw new Error(`Could not create "${PENDING_SHEET}" sheet`);
+    this.sheetIds.set(PENDING_SHEET, sheetId);
+
+    await this.sheets.spreadsheets.values.update({
+      spreadsheetId: this.spreadsheetId,
+      range: `${PENDING_SHEET}!A1:E1`,
+      valueInputOption: "RAW",
+      requestBody: { values: [["DiscordID", "DisplayName", "Date", "Status", "RecordedAt"]] },
+    });
+
+    return sheetId;
+  }
+
+  private isoDay(at: Date): string {
+    return at.toISOString().slice(0, 10);
+  }
+
+  async recordPendingCheckIn(discordId: string, displayName: string, status: AttendanceStatus, at: Date): Promise<void> {
+    await this.ensurePendingSheetExists();
+    const rows = (await this.values(`${PENDING_SHEET}!A2:E`));
+    const today = this.isoDay(at);
+    const alreadyRecorded = rows.some((r) => r[0] === discordId && (r[2] ?? "").slice(0, 10) === today);
+    if (alreadyRecorded) return;
+
+    await this.sheets.spreadsheets.values.append({
+      spreadsheetId: this.spreadsheetId,
+      range: `${PENDING_SHEET}!A:E`,
+      valueInputOption: "RAW",
+      insertDataOption: "INSERT_ROWS",
+      requestBody: { values: [[discordId, displayName, at.toISOString(), status, new Date().toISOString()]] },
+    });
+  }
+
+  async resolvePendingCheckIns(discordId: string): Promise<{ status: AttendanceStatus; at: Date }[]> {
+    const sheetId = await this.ensurePendingSheetExists();
+    const rows = (await this.values(`${PENDING_SHEET}!A2:E`));
+
+    const matches: { rowIndex0: number; status: AttendanceStatus; at: Date }[] = [];
+    rows.forEach((r, i) => {
+      if (r[0] === discordId) {
+        matches.push({ rowIndex0: i + 1, status: r[3] as AttendanceStatus, at: new Date(r[2]) }); // +1: header is row 1
+      }
+    });
+    if (matches.length === 0) return [];
+
+    const deleteRequests = matches
+      .map((m) => m.rowIndex0)
+      .sort((a, b) => b - a)
+      .map((rowIndex0) => ({
+        deleteDimension: { range: { sheetId, dimension: "ROWS", startIndex: rowIndex0, endIndex: rowIndex0 + 1 } },
+      }));
+
+    await this.sheets.spreadsheets.batchUpdate({
+      spreadsheetId: this.spreadsheetId,
+      requestBody: { requests: deleteRequests },
+    });
+
+    return matches.map((m) => ({ status: m.status, at: m.at }));
   }
 
   async validateReadiness(): Promise<void> {

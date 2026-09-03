@@ -11,5 +11,17 @@ export interface AttendanceRepository {
     status: AttendanceStatus,
     at: Date
   ): Promise<AttendanceResult>;
+  /**
+   * Records a check-in for a Discord user who isn't registered yet — kept separate from the
+   * player-facing attendance sheets (which should only ever show real character names) until
+   * they register and it can be resolved into a real name. Deduped per discordId per calendar
+   * day, so repeated voice joins/leaves the same day don't pile up entries.
+   */
+  recordPendingCheckIn(discordId: string, displayName: string, status: AttendanceStatus, at: Date): Promise<void>;
+  /**
+   * Reads and removes every pending check-in recorded for a Discord ID (call this once they
+   * register, then replay each entry through markAttendance with their real name/class).
+   */
+  resolvePendingCheckIns(discordId: string): Promise<{ status: AttendanceStatus; at: Date }[]>;
   validateReadiness(): Promise<void>;
 }

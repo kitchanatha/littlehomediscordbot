@@ -32,10 +32,10 @@ const displayRepository = new GoogleSheetsDisplayRepository();
 const sheetDisplayService = new SheetDisplayService(repository, displayRepository, classService);
 const queueRepository = new GoogleSheetsQueueRepository();
 const queueService = new QueueService(queueRepository, repository, classService);
-const service = new MemberService(repository, classService, sheetDisplayService, queueService);
 const warRosterService = new WarRosterService(repository, classService);
 const attendanceRepository = new GoogleSheetsAttendanceRepository();
 const attendanceService = new AttendanceService(attendanceRepository, repository);
+const service = new MemberService(repository, classService, sheetDisplayService, queueService, attendanceService);
 
 try {
   console.log("INFO Validating Google Sheets database readiness...");
@@ -118,7 +118,15 @@ discordClient.on(Events.VoiceStateUpdate, async (oldState, newState) => {
     console.log(`INFO Auto check-in via voice: ${result.characterName} marked present for ${result.dateLabel}`);
   } catch (error) {
     if (error instanceof UserError) {
-      console.log(`INFO Auto check-in skipped for ${newState.id}: ${error.message}`);
+      // Not registered yet — record it separately so it can be replayed under their real
+      // name/class once they do register (see AttendanceService.reconcilePendingAttendance).
+      const displayName = newState.member?.displayName ?? newState.member?.user.username ?? newState.id;
+      try {
+        await attendanceService.checkInUnregistered(newState.id, displayName);
+        console.log(`INFO Auto check-in pending for unregistered ${displayName} (${newState.id})`);
+      } catch (pendingError) {
+        console.error(`ERROR Failed to record pending check-in for ${newState.id}`, pendingError);
+      }
     } else {
       console.error(`ERROR Auto check-in failed for ${newState.id}`, error);
     }
