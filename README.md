@@ -1,258 +1,264 @@
-# Ragnarok: The New World Guild Bot
+# Little Home Guild Bot
 
-Comprehensive Discord bot for guild management using Google Sheets as a database.
+Discord bot for managing the "Little Home" Ragnarok Online guild, using a Google Sheet as the
+database. Built for one specific guild's real, hand-maintained spreadsheet — the bot reads and
+writes into the guild's existing tabs rather than owning its own separate data model.
 
 ## Features
 
-- **Profile Management**: `/register`, `/name_class`, `/profile`, `/history`.
-- **Assignment System**: `/assign` Team (A, B, C, or D) and Party (Admin only).
-- **Sunday War Roster**: `/war_roster` with automatic updates.
-- **Card & Accessory Queues**: `/queue_join`, `/queue_status`, `/queue_list`, etc., with a 3-day cooldown, mirrored to two separate sheets (`คิวการ์ดประดับ` for Card, `คิวประดับ` for Accessory).
-- **War Attendance**: joining a configured War voice channel automatically marks a member present (`มา`) on both the attendance sheet and their class tab; `/war_checkin` is a manual fallback and `/war_leave` lets a member self-report an absence (`แจ้งลาแล้ว`).
-- **Visual Display Sync**: Automatic class symbols and background colors across all player-facing sheets.
-- **Membership Automation**: Automatic status tracking when members leave/rejoin the Discord server.
+- **Profile management**: `/register`, `/name`, `/class`, `/name_class`, `/profile`, `/history`.
+- **Assignment**: `/assign` a member to a Team (A/B/C/D) and Party (Admin only).
+- **War roster**: `/war_roster`, filterable by team/party.
+- **War attendance**: joining a configured War voice channel auto-marks a member present (`มา`)
+  on the attendance sheet and their class tab. `/war_checkin` is a manual fallback; `/war_leave`
+  lets a member self-report an absence (`แจ้งลาแล้ว`) ahead of time.
+- **Card & Accessory queues**: `/queue_join`, `/queue_leave`, `/queue_status`, `/queue_list`,
+  `/queue_add`, `/queue_remove`, with a 3-day rejoin cooldown, mirrored to `คิวการ์ดประดับ` and
+  `คิวประดับ`.
+- **Auto-register**: members posting the guild's registration-form template in a configured
+  channel are registered automatically, no slash command needed.
+- **Auto name/class change**: members posting a name/class change request in a configured
+  channel have it applied to their own profile automatically.
+- **Membership automation**: a member leaving the Discord server is marked `Left` (and pulled
+  from all active queues); rejoining restores them to `Active`. A startup reconciliation pass
+  catches anyone who left while the bot was offline.
+- **Visual sync**: class symbols/colors kept in sync across every player-facing sheet.
 
-## Commands
+## Architecture
 
-Discord commands call `MemberService`. The service contains business rules and depends only on the `MemberRepository` interface. `GoogleSheetsMemberRepository` is the current storage implementation. A PostgreSQL repository can replace it later without rewriting Discord commands.
+Discord commands call into `*Service` classes (`MemberService`, `QueueService`,
+`AttendanceService`, `ClassService`, `WarRosterService`), which depend only on repository
+*interfaces* (`MemberRepository`, `QueueRepository`, `AttendanceRepository`). The current
+implementation of each is Google-Sheets-backed (`GoogleSheets*Repository`); swapping to a real
+database later means writing a new repository implementation, not touching commands or business
+logic.
 
-Discord User ID is the permanent member identity. Character name is editable and must never be used as the primary identity.
+Discord User ID is the permanent member identity. Character name is editable and must never be
+used as a key.
 
-## Google Sheet used
+## Google Sheet structure
 
-Set `GOOGLE_SHEET_ID` to the ID of your guild's Google Sheet (the long ID in its URL).
+Set `GOOGLE_SHEET_ID` to the ID from your guild's Sheet URL. The bot expects two kinds of tabs:
 
-The bot uses two kinds of tabs in that sheet:
+**Internal (bot-managed — don't hand-edit):**
 
-**Internal (bot-managed, not meant to be hand-edited):**
+- `Members`, `Name_History`, `Class_History`, `Team_History`, `Party_History`
+- `Classes` — one row per class: `ClassID`, `ClassName`, `Active`, `SortOrder`, `Symbol`,
+  `ColorHex`, `Icon` (an `IMAGE()` formula). Edit `ColorHex`/`Icon`/`Symbol` here to change the
+  guild-wide look; re-run `npm run apply-class-colors` and `npm run add-class-icons` afterward
+  to push changes out to every other tab.
+- `Legacy_Members`, `Audit_Log`, `Queue_Entries`, `Queue_History`
+- `Game_Roster_CombatPower` — the durable, Discord-independent source of truth for every known
+  in-game character's Combat Power and Class (from the guild's own class tabs / war roster),
+  linked to a Discord `Members` row only once that person actually registers. See
+  `src/scripts/update-combat-power.ts`, `link-war-roster.ts`, `link-class-tabs.ts`.
 
-- `Members`
-- `Name_History`
-- `Class_History`
-- `Team_History`
-- `Party_History`
-- `Classes`
-- `Legacy_Members`
-- `Audit_Log`
-- `Queue_Entries`
-- `Queue_History`
+**Player-facing (the guild's own layout — the bot only ever edits cell text/color/attendance
+marks here, never structure):**
 
-**Player-facing (the guild's original layout, kept exactly as-is — the bot only edits cell text/color/attendance marks in these, never the structure):**
-
-- `รายชื่อตี้วอร์ห้องหลัก` (main war room roster)
-- `ตี้วอร์วันอาทิตย์` (weekly Sunday War lineup)
-- `รายชื่ออีลิทตีอบอสวันอาทิตย์` (elite boss roster)
+- `รายชื่อตี้วอร์ห้องหลัก` (main war room roster grid)
 - `เช็คขาด-ลา` (attendance)
-- `Knight`, `Paladin`, `Hunter`, `Assassin`, `Wizard`, `Priest`, `Monk`, `Blacksmith`, `Gunslinger`, `Druid` (one tab per class, also used for attendance)
-- `คิวการ์ดประดับ` (Card queue display)
-- `คิวประดับ` (Accessory queue display)
+- `Knight`, `Paladin`, `Hunter`, `Assassin`, `Wizard`, `Priest`, `Monk`, `Blacksmith`,
+  `Gunslinger`, `Druid` (one tab per class; also used for attendance)
+- `คิวการ์ดประดับ` / `คิวประดับ` (Card / Accessory queue displays)
+- `War Plan (Draft)` — created on demand by `npm run plan-war-teams`; never touches the live
+  roster above.
 
-These names must match the tabs that actually exist in the connected Sheet exactly (including spacing/punctuation) — the bot does not create these player-facing tabs itself.
+Tab names must match exactly (spacing/punctuation included) — the bot does not create these
+player-facing tabs itself. `Legacy_Members` is read at first registration: if the character name
+matches an old guild member, Class/Team/Party carry over automatically.
 
-`Legacy_Members` is read during first registration. If the character name matches an old guild member, the bot carries over Class, Team, and Party. The new `Members` row is still keyed by Discord ID.
+---
 
-## 1. Install Node.js
+## Setup (from scratch)
 
-Install Node.js 20 or newer, then verify:
+### 1. Install Node.js
+
+Node.js 20+ required.
 
 ```bash
 node --version
 npm --version
 ```
 
-## 2. Install dependencies
+### 2. Install dependencies
 
 ```bash
 npm install
 ```
 
-## 3. Create a Discord application and bot
+### 3. Create the Discord application
 
-1. Open Discord Developer Portal.
-2. Create an application.
-3. Open **Bot** and create the bot user.
-4. Copy the bot token into `DISCORD_TOKEN`.
-5. In **General Information**, copy Application ID into `DISCORD_CLIENT_ID`.
-6. Enable the bot for your guild/server and copy the server ID into `DISCORD_GUILD_ID`.
-7. Invite the bot with scopes `bot` and `applications.commands`.
-8. **Required for `/register_all`**: In the **Bot** tab, scroll down to **Privileged Gateway Intents** and enable **Server Members Intent**. Then set `ENABLE_MEMBERS_INTENT=true` in your `.env`.
+1. Go to the [Discord Developer Portal](https://discord.com/developers/applications) → **New
+   Application**.
+2. Open **Bot** → **Add Bot**. Copy the token → `DISCORD_TOKEN`.
+3. Under **General Information**, copy the **Application ID** → `DISCORD_CLIENT_ID`.
+4. Under **OAuth2 → URL Generator**, check scopes `bot` and `applications.commands`, then check
+   the bot permissions it needs (Send Messages, Manage Roles if using `/assign`, Connect/View
+   Channels for voice check-in, etc.). Open the generated URL and invite it to your server.
+5. Copy your Discord server (guild) ID → `DISCORD_GUILD_ID` (enable Developer Mode in Discord
+   settings, then right-click the server icon → Copy Server ID).
+6. **Privileged Gateway Intents** (still in the **Bot** tab): enable **Server Members Intent**
+   if you'll use `/register_all` or membership reconciliation, and **Message Content Intent** if
+   you'll use the auto-register or auto name/class-change channels. Enable each corresponding
+   `.env` flag/channel ID only after turning on its intent here, or the bot will fail to log in.
 
-Phase 1 only needs the normal Guilds intent, but Phase 2/3 bulk registration and membership automation require the Members intent.
+### 4. Create the Google Cloud project + service account
 
-## Guild Membership Automation
+1. Create or select a project at [Google Cloud Console](https://console.cloud.google.com).
+2. **APIs & Services → Library** → enable the **Google Sheets API**.
+3. **IAM & Admin → Service Accounts → Create Service Account**. Any name is fine; no project
+   roles are required (access is granted via sharing the Sheet directly, not IAM).
+4. Open the new service account → **Keys → Add Key → Create new key → JSON**. This downloads a
+   JSON file containing `client_email` and `private_key` — these become
+   `GOOGLE_SERVICE_ACCOUNT_EMAIL` and `GOOGLE_PRIVATE_KEY`.
+5. Open your guild's Google Sheet → **Share** → paste the service account's email → give it
+   **Editor** access.
+6. (Only needed if you want the real class-icon images from `add-class-icons.ts` to render, not
+   just colors/emoji) Also enable the **Google Drive API** in the same project — see the
+   "Class icons" note below.
 
-The bot automatically handles members leaving or joining the configured Discord server:
+Never commit the JSON key or the private key value anywhere.
 
-- **Guild Leave**: When a registered member leaves the server, their status is set to `Left`, and they are automatically removed from all active queues (Card/Accessory) without a cooldown.
-- **Guild Rejoin**: When a member with `Left` status rejoins the server, their status is automatically set back to `Active`, and their Discord username is updated.
-- **Reconciliation**: On startup, if `ENABLE_MEMBERS_INTENT` is `true`, the bot compares the current server members with the spreadsheet and marks any missing members as `Left`.
-
-All membership changes are recorded in the `Audit_Log` with the actor `SYSTEM`.
-
-## War Attendance (Check-in / Leave)
-
-Optional — leave `WAR_CHECKIN_VOICE_CHANNEL_IDS` blank to disable entirely.
-
-- Set `WAR_CHECKIN_VOICE_CHANNEL_IDS` to a comma-separated list of the War voice channel IDs (e.g. `1535489015187513354,1535489924231462973`). Enable **Server Members Intent** is not required for this, but the bot does need to actually be in the server; when this variable is set the bot requests the `GuildVoiceStates` intent automatically.
-- A member joining any of those voice channels is marked present (`มา`) for today's War, on both the `เช็คขาด-ลา` sheet and their class tab. No command needed.
-- `/war_checkin` is a manual fallback for anyone the automatic check-in misses (e.g. already in the channel when the bot restarted).
-- `/war_leave` lets a member self-report an absence (`แจ้งลาแล้ว`) ahead of time. Set `WAR_LEAVE_CHANNEL_ID` to restrict it to one text channel (e.g. `1535950902421102622`); leave it blank to allow it anywhere.
-- Attendance columns are matched by date, tolerant of the guild's existing inconsistent header formatting (`war 31/7/69`, `War  13/8/69`, ...). New columns the bot creates always use `War D/M/YY` (Buddhist year), added automatically if today's date has no column yet.
-
-## 4. Create Google service account
-
-1. Create/select a Google Cloud project.
-2. Enable **Google Sheets API**.
-3. Create a Service Account.
-4. Create a key for it and copy its email/private key.
-5. Share the bot database Google Sheet with the service-account email as **Editor**.
-6. Put the email/private key in `.env`.
-
-Do not commit the service-account private key.
-
-## 5. Configure `.env`
-
-Copy:
+### 5. Configure `.env`
 
 ```bash
 cp .env.example .env
 ```
 
-Then fill in:
+| Variable | Required | Notes |
+|---|---|---|
+| `DISCORD_TOKEN` | Yes | From step 3.2 |
+| `DISCORD_CLIENT_ID` | Yes | From step 3.3 |
+| `DISCORD_GUILD_ID` | Yes | From step 3.5 |
+| `GOOGLE_SHEET_ID` | Yes | The long ID in the Sheet's URL |
+| `GOOGLE_SERVICE_ACCOUNT_EMAIL` | Yes | From the downloaded JSON key |
+| `GOOGLE_PRIVATE_KEY` | Yes | From the JSON key, keep the `\n` escapes on one line, wrapped in quotes |
+| `ASSIGN_ROLE_IDS` | Yes | Comma-separated Discord role IDs allowed to run admin commands |
+| `ENABLE_MEMBERS_INTENT` | No | `true` to enable `/register_all` + leave/rejoin reconciliation (needs the Discord-side intent too) |
+| `WAR_CHECKIN_VOICE_CHANNEL_IDS` | No | Comma-separated voice channel IDs for auto check-in. Blank disables the feature |
+| `WAR_LEAVE_CHANNEL_ID` | No | Restrict `/war_leave` to one channel; blank allows it anywhere |
+| `AUTO_REGISTER_CHANNEL_ID` | No | Channel where posted registration forms auto-register the poster. Needs Message Content Intent |
+| `NAME_CLASS_CHANGE_CHANNEL_ID` | No | Channel where posted change requests auto-apply. Needs Message Content Intent |
+| `MEMBER_UPDATE_CHANNEL_ID` | No | Channel where a member leaving the server is announced |
 
-```env
-DISCORD_TOKEN=...
-DISCORD_CLIENT_ID=...
-DISCORD_GUILD_ID=...
-GOOGLE_SHEET_ID=1DEC5SjzqWXnAD-mySk-MQPIeteS8ETGlNBpG4EM9jW4
-GOOGLE_SERVICE_ACCOUNT_EMAIL=...
-GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
-ASSIGN_ROLE_IDS=857246001807360060,857258558605361154
-```
-
-## 6. Register slash commands
+### 6. Register slash commands
 
 ```bash
 npm run deploy:commands
 ```
 
-Guild commands normally appear quickly in the selected Discord server.
+Guild-scoped commands (registered against `DISCORD_GUILD_ID`) show up within seconds.
 
-## 7. Start the bot
+### 7. Run the bot
+
+For a quick local run:
 
 ```bash
 npm start
 ```
 
-Expected log:
+Expect:
 
 ```text
+INFO Validating Google Sheets database readiness...
+✅ Database readiness verified
 INFO Bot ready as YourBot#0000
+INFO Starting member reconciliation...
+✅ Reconciliation finished. Marked 0 members as Left.
 ```
 
-## 8. Test Phase 1
+For a persistent local run that survives crashes (recommended over a bare `npm start` left in a
+terminal), use the included pm2 config:
 
-### Register an old member
-
-Example:
-
-```text
-/register character_name:Piko
+```bash
+npm install -g pm2
+pm2 start ecosystem.config.cjs
+pm2 save
+pm2 status
+pm2 logs ragnarok-guild-bot
 ```
 
-Expected: Knight + Team A + Party 8 are pulled from `Legacy_Members`, while Discord ID is written into `Members`.
+**Important**: never run more than one instance against the same bot token at once (e.g. a
+leftover `npm start` in one terminal plus a `pm2`-managed one) — both will connect to Discord
+simultaneously and every command/event gets handled (and answered) twice.
 
-### Profile
+To run it on a free, always-on cloud VM instead of your own machine, see
+[DEPLOYMENT.md](DEPLOYMENT.md) (Oracle Cloud "Always Free" tier walkthrough).
 
-```text
-/profile
-```
+---
 
-Expected: current character, class, team, party and status.
+## Commands & permissions
 
-### Change name
+| Command | Member | Admin |
+|---|---|---|
+| `/register` | ✅ | ✅ |
+| `/profile` | ✅ | ✅ |
+| `/name` | ✅ | ✅ |
+| `/class` | ✅ | ✅ |
+| `/name_class` | ✅ (self) | ✅ (any member, via `member` option) |
+| `/history` | ✅ | ✅ |
+| `/war_roster` | ✅ | ✅ |
+| `/war_checkin` | ✅ | ✅ |
+| `/war_leave` | ✅ | ✅ |
+| `/queue_join` / `/queue_leave` / `/queue_status` / `/queue_list` | ✅ | ✅ |
+| `/register_all` | ❌ | ✅ |
+| `/assign` | ❌ | ✅ |
+| `/queue_add` / `/queue_remove` | ❌ | ✅ |
 
-```text
-/name new_name:PikoX
-```
+"Admin" = a member holding one of the roles listed in `ASSIGN_ROLE_IDS`.
 
-Expected: `Members.CharacterName` changes and one immutable row is added to `Name_History`.
+---
 
-### Change class
+## Maintenance / admin scripts (`npm run <name>`)
 
-```text
-/class new_class:Hunter
-```
+These are one-off Node scripts (not part of the live bot process) for bulk data operations on
+the connected Sheet. Safe to re-run anytime unless noted:
 
-Expected: class is validated from the `Classes` tab, then `Members.Class` changes and a row is added to `Class_History`.
+| Script | What it does |
+|---|---|
+| `apply-class-colors` | Colors every character-name cell across all class tabs, attendance, war roster, and `Game_Roster_CombatPower` by class (reads `Classes!ColorHex`). Re-run after changing colors. |
+| `add-class-icons` | Adds an `IMAGE()`-formula "Icon" column to `Game_Roster_CombatPower`, all class tabs, attendance, and both queue displays. |
+| `sort-attendance-by-class` | Regroups `เช็คขาด-ลา` rows into contiguous class blocks, renumbering each block 1..N, recoloring as it goes. |
+| `plan-war-teams` | Proposes a balanced Team A/B/C party split (CP + class mix, guaranteed 1 Priest per party) into a new `War Plan (Draft)` tab. Never touches the live roster. |
+| `update-combat-power` | Upserts transcribed `{characterName, combatPower}` data into `Game_Roster_CombatPower` and carries CP over to any already-linked `Members` row. |
+| `link-war-roster` / `link-class-tabs` | Backfills Team/Party/Class into `Game_Roster_CombatPower` from the war-roster grid / class tabs (the guild's own ground truth), using exact → normalized → fuzzy name matching. |
+| `insert-cp-column-after-name` | Inserts a "Combat Power" column right after the name column on every class tab. |
+| `backfill:auto-register` / `backfill:name-class-change` | One-time replay of historical messages in the auto-register / name-class-change channels, for messages posted before those features existed. Rate-limited with delays — expect several minutes for a large channel history. |
+| `push-combat-power-to-tabs`, `revert-and-combine-class-tabs` | Superseded by `insert-cp-column-after-name`; kept for reference/rollback only. |
+| `register-card-queue`, `register-accessory-queue` | **One-off, session-specific**: hardcoded name lists from a particular bulk-import request. Not a reusable template — copy the pattern into a new script rather than editing the name list in these. |
 
-### History
+## Class icon images
 
-```text
-/history
-```
+`Classes!Icon` and every propagated "Icon" column use `=IMAGE(url, 4, 30, 30)` pointing at the
+reference game's own CDN. Two things to know:
 
-Expected: previous name/class/team/party changes are shown without deleting old records.
-
-### War Roster
-
-```text
-/war_roster
-/war_roster team:A
-/war_roster team:C party:4
-```
-
-Expected: Show active members grouped by Team and Party.
-
-### Assign (Admin only)
-
-```text
-/assign member:@User team:C party:4
-```
-
-Expected: member's default guild assignment is updated, history and audit log are recorded.
-
-## Permissions
-
-| Command | Member | Officer | Admin |
-|---------|--------|---------|-------|
-| `/register` | Yes | Yes | Yes |
-| `/profile` | Yes | Yes | Yes |
-| `/name` | Yes | Yes | Yes |
-| `/class` | Yes | Yes | Yes |
-| `/name_class` | Yes | Yes | Yes |
-| `/history` | Yes | Yes | Yes |
-| `/register_all` | No | No | Yes |
-| `/war_roster` | Yes | Yes | Yes |
-| `/assign` | No | No | Yes |
-| `/queue_join` | Yes | Yes | Yes |
-| `/queue_leave` | Yes | Yes | Yes |
-| `/queue_status` | Yes | Yes | Yes |
-| `/queue_list` | Yes | Yes | Yes |
-| `/queue_add` | No | No | Yes |
-| `/queue_remove` | No | No | Yes |
-| `/war_checkin` | Yes | Yes | Yes |
-| `/war_leave` | Yes | Yes | Yes |
-
-Note: `ASSIGN_ROLE_IDS` must be configured in `.env`. Multiple role IDs can be separated by commas.
+- Google Sheets sometimes shows `#REF! "Please use a desktop web browser..."` on an
+  API-written `IMAGE()` formula until the sheet owner opens the file in an actual browser once —
+  this is a real Sheets quirk, not a bug in these scripts.
+- Google Drive hosting was tried as a more reliable alternative but hit two dead ends worth
+  knowing about if you revisit this: a service account has **no Drive storage quota** on a
+  regular personal Google account (`storageQuotaExceeded` — Shared Drives require Google
+  Workspace), and the Drive API must be explicitly enabled per Cloud project before any Drive
+  call works at all.
 
 ## Tests
 
 ```bash
+npm run typecheck
 npm test
 ```
 
-## Important Phase 1 limitations
+## Known limitations
 
-- No `/team` or `/party` command yet.
-- Legacy matching is intentionally conservative; the bot does not guess uncertain identities.
-- Real Discord and Google credentials are required before the bot can run end-to-end.
-- Auto check-in only fires on a voice-channel *join*; a member already sitting in the channel when the bot (re)starts needs to run `/war_checkin` manually once.
-
-### Concurrency and ID Generation
-
-For Phase 1, MemberIDs are generated by reading the existing IDs from the sheet and incrementing the highest value. This approach has a known concurrency limitation: if multiple users register at the exact same millisecond, they might be assigned the same MemberID. 
-
-Similarly, legacy record linking is performed in two steps (create member, then link legacy). In extremely rare cases where two users claim the same legacy name simultaneously, Google Sheets' lack of row-level locking might lead to both registrations succeeding before the first link is written back. 
-
-For a guild-scale bot, these are practical trade-offs. Future phases with PostgreSQL will use native database sequences and transactions to eliminate these risks.
+- Legacy-member matching (`Legacy_Members`) is intentionally conservative — it never guesses an
+  uncertain identity match.
+- MemberID/HistoryID generation reads existing IDs and increments the max; two registrations at
+  the exact same millisecond could theoretically collide. Acceptable at guild scale; a future
+  real-database backend would use native sequences instead.
+- Auto war check-in only fires on a voice-channel *join* event — a member already sitting in the
+  channel when the bot (re)starts needs one manual `/war_checkin`.
+- Roughly 15-25% of names across attendance/queue sheets don't auto-link to
+  `Game_Roster_CombatPower` due to spelling variants beyond what exact/fuzzy matching catches
+  (nicknames, decorative characters, typos) — these show up as unmatched in each script's
+  console output and are resolved ad hoc as they're noticed.
