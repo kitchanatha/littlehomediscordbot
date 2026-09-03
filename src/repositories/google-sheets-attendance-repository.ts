@@ -1,7 +1,7 @@
 import { sheets_v4 } from "googleapis";
 import { env } from "../config/env.js";
 import { sheetsClient } from "../google/sheets-client.js";
-import { normalizeName } from "../utils/normalize.js";
+import { coreName, normalizeName } from "../utils/normalize.js";
 import type { AttendanceRepository } from "./attendance-repository.js";
 import type { AttendanceResult, AttendanceStatus } from "../types/attendance.js";
 
@@ -144,6 +144,31 @@ export class GoogleSheetsAttendanceRepository implements AttendanceRepository {
     const target = normalizeName(name);
     const idx = columnValues.findIndex((v) => normalizeName(v) === target);
     if (idx >= 0) return idx + 2; // header is row 1; column data starts at A2
+
+    // Fall back to a core-name match (strip emoji/symbols/spacing, case-insensitive) before
+    // creating a new row. This catches the same person already on the sheet under a decorated
+    // variant of their name (e.g. an emoji baked into an old manually-entered row, "O D I N" vs
+    // "ODIN", "-Newzメ" vs "Newz") — a real duplication bug found and fixed by hand once; this
+    // keeps it from recurring. Only an exact core match counts (not fuzzy/edit-distance) to
+    // avoid merging two different people who happen to have similar-looking names. When it
+    // fires, the matched row's name cell is updated to the current canonical name so it stays
+    // in sync and future lookups hit the exact-match path above.
+    const targetCore = coreName(name);
+    if (targetCore) {
+      const coreIdx = columnValues.findIndex((v) => coreName(v) === targetCore);
+      if (coreIdx >= 0) {
+        const rowNumber = coreIdx + 2;
+        if (columnValues[coreIdx] !== name) {
+          await this.sheets.spreadsheets.values.update({
+            spreadsheetId: this.spreadsheetId,
+            range: `${sheetName}!${letter}${rowNumber}`,
+            valueInputOption: "RAW",
+            requestBody: { values: [[name]] },
+          });
+        }
+        return rowNumber;
+      }
+    }
 
     // spreadsheets.values.append with insertDataOption=INSERT_ROWS has a real Google Sheets API
     // bug: a column-restricted range (e.g. "B:B") is ignored for the actual write position, and
