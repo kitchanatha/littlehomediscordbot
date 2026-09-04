@@ -21,6 +21,7 @@
     "register-card-queue": "tsx src/scripts/register-card-queue.ts",
     "register-accessory-queue": "tsx src/scripts/register-accessory-queue.ts",
     "add-class-icons": "tsx src/scripts/add-class-icons.ts",
+    "post-member-panel": "tsx src/scripts/post-member-panel.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },

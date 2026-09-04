@@ -1,6 +1,7 @@
 import { Events, MessageFlags } from "discord.js";
 import { handleAssign } from "./commands/assign.js";
 import { handleHelp } from "./commands/help.js";
+import { handlePanelButton, handlePanelModalSubmit } from "./discord/member-panel.js";
 import { handleClass } from "./commands/class.js";
 import { handleHistory } from "./commands/history.js";
 import { handleName } from "./commands/name.js";
@@ -221,6 +222,24 @@ discordClient.on(Events.InteractionCreate, async (interaction) => {
       .filter((c) => c.toLowerCase().includes(focusedValue))
       .slice(0, 25);
     await interaction.respond(filtered.map((c) => ({ name: c, value: c })));
+    return;
+  }
+
+  if (interaction.isButton()) {
+    try {
+      await handlePanelButton(interaction, queueService);
+    } catch (error) {
+      console.error("ERROR Panel button failed", error);
+    }
+    return;
+  }
+
+  if (interaction.isModalSubmit()) {
+    try {
+      await handlePanelModalSubmit(interaction, service, classService);
+    } catch (error) {
+      console.error("ERROR Panel modal submit failed", error);
+    }
     return;
   }
 
