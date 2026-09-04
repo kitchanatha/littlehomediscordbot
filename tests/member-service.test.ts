@@ -101,24 +101,22 @@ describe("MemberService", () => {
     return { service, classService, displayService };
   };
 
-  it("registers a new legacy member and links team/party", async () => {
+  it("registers a member with a legacy record without auto-linking team/party", async () => {
     const repo = new FakeRepo();
     const { service } = createServices(repo);
     const result = await service.register({ discordId: "123", discordUsername: "user", characterName: "Piko", className: "Knight" });
-    
-    expect(result.legacyLinked).toBe(true);
+
     expect(result.member.memberId).toBe("M000001");
     expect(result.member.className).toBe("Knight");
-    expect(result.member.team).toBe("A");
-    expect(result.member.party).toBe("8");
+    expect(result.member.team).toBe("");
+    expect(result.member.party).toBe("");
   });
 
   it("registers a new non-legacy member", async () => {
     const repo = new FakeRepo();
     const { service } = createServices(repo);
     const result = await service.register({ discordId: "456", discordUsername: "newbie", characterName: "NewGuy", className: "Hunter" });
-    
-    expect(result.legacyLinked).toBe(false);
+
     expect(result.member.memberId).toBe("M000001");
     expect(result.member.characterName).toBe("NewGuy");
     expect(result.member.className).toBe("Hunter");
@@ -164,7 +162,7 @@ describe("MemberService", () => {
     const result = await service.register({ discordId: "123", discordUsername: "user", characterName: "Piko", className: "Hunter" });
     
     expect(result.member.className).toBe("Hunter");
-    expect(result.member.team).toBe("A");
+    expect(result.member.team).toBe("");
   });
 
   it("registration creates no history", async () => {
@@ -237,35 +235,24 @@ describe("MemberService", () => {
     expect(normalizeName(input1)).toBe(normalizeName(input2));
   });
 
-  it("first legacy claim succeeds and links discord id", async () => {
+  it("does not auto-link a legacy record's discord id on registration", async () => {
     const repo = new FakeRepo();
     const { service } = createServices(repo);
     await service.register({ discordId: "123", discordUsername: "user", characterName: "Piko", className: "Knight" });
-    
-    expect(repo.legacy?.linkedDiscordId).toBe("123");
+
+    expect(repo.legacy?.linkedDiscordId).toBeUndefined();
   });
 
-  it("prevents duplicate legacy claims by different discord accounts", async () => {
-    const repo = new FakeRepo();
-    const { service } = createServices(repo);
-    // User 1 claims Piko
-    await service.register({ discordId: "123", discordUsername: "user1", characterName: "Piko", className: "Knight" });
-    
-    // User 2 tries to claim Piko
-    await expect(service.register({ discordId: "456", discordUsername: "user2", characterName: "Piko", className: "Knight" }))
-      .rejects.toThrow("already been claimed by another user");
-  });
-
-  it("handles legacy registration when legacy class is blank and user provides one", async () => {
+  it("handles registration when a legacy record exists with a blank class", async () => {
     const repo = new FakeRepo();
     repo.legacy = { legacyName: "NoClassPiko", className: "", team: "B", party: "2", source: "legacy", matchStatus: "Matched", notes: "" };
     const { service } = createServices(repo);
-    
+
     const result = await service.register({ discordId: "123", discordUsername: "user", characterName: "NoClassPiko", className: "Priest" });
-    
+
     expect(result.member.className).toBe("Priest");
-    expect(result.member.team).toBe("B");
-    expect(result.member.party).toBe("2");
+    expect(result.member.team).toBe("");
+    expect(result.member.party).toBe("");
   });
 
   it("rejects legacy registration when user class is invalid", async () => {
@@ -327,23 +314,25 @@ describe("MemberService", () => {
       const repo = new FakeRepo();
       const { service } = createServices(repo);
       await service.register({ discordId: "123", discordUsername: "user", characterName: "Piko", className: "Knight" });
-      // Legacy Piko is Team A, Party 8
-      
+      await service.assignMember({ targetDiscordId: "123", team: "A", party: 8, adminDiscordId: "admin" });
+      const teamHistoryBefore = (await service.history("123")).filter(h => h.type === "team").length;
+
       // Assign Team A (no change) but change Party to 1
       const updated = await service.assignMember({ targetDiscordId: "123", team: "A", party: 1, adminDiscordId: "admin" });
       expect(updated.team).toBe("A");
       expect(updated.party).toBe("1");
-      
+
       const history = await service.history("123");
-      expect(history.filter(h => h.type === "team")).toHaveLength(0);
-      expect(history.filter(h => h.type === "party")).toHaveLength(1);
+      expect(history.filter(h => h.type === "team")).toHaveLength(teamHistoryBefore);
+      expect(history.filter(h => h.type === "party")).toHaveLength(2);
     });
 
     it("rejects if no change at all", async () => {
       const repo = new FakeRepo();
       const { service } = createServices(repo);
       await service.register({ discordId: "123", discordUsername: "user", characterName: "Piko", className: "Knight" });
-      
+      await service.assignMember({ targetDiscordId: "123", team: "A", party: 8, adminDiscordId: "admin" });
+
       await expect(service.assignMember({ targetDiscordId: "123", team: "A", party: 8, adminDiscordId: "admin" }))
         .rejects.toThrow("already assigned");
     });

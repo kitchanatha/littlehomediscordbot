@@ -29,7 +29,7 @@ export class MemberService {
     return this.classService.getActiveClasses();
   }
 
-  async register(input: { discordId: string; discordUsername: string; characterName: string; className: string }): Promise<{ member: Member; legacyLinked: boolean }> {
+  async register(input: { discordId: string; discordUsername: string; characterName: string; className: string }): Promise<{ member: Member }> {
     const existing = await this.repository.findByDiscordId(input.discordId);
     if (existing) {
       throw new UserError("❌ You are already registered. Use /name_class to update your profile.\n❌ คุณลงทะเบียนแล้ว หากต้องการแก้ไขข้อมูลให้ใช้ /name_class");
@@ -42,11 +42,6 @@ export class MemberService {
       throw new UserError("❌ Invalid class. Please select an active class.\n❌ อาชีพไม่ถูกต้อง กรุณาเลือกอาชีพจากรายการ");
     }
 
-    const legacy = await this.repository.findLegacyByName(input.characterName);
-    if (legacy && legacy.linkedDiscordId && legacy.linkedDiscordId !== input.discordId) {
-      throw new UserError("❌ This legacy guild record has already been claimed by another user.");
-    }
-
     const existingIds = await this.repository.getAllMemberIds();
     const memberId = generateNextId("M", existingIds);
 
@@ -57,18 +52,14 @@ export class MemberService {
       discordUsername: input.discordUsername,
       characterName: input.characterName.trim(),
       className: canonical,
-      team: legacy?.team ?? "",
-      party: legacy?.party ?? "",
+      team: "",
+      party: "",
       status: "Active",
       joinedDate: now,
       lastUpdated: now,
     };
 
     await this.repository.createMember(member);
-
-    if (legacy) {
-      await this.repository.linkLegacy(legacy.legacyName, input.discordId, memberId, now);
-    }
 
     // Best-effort carryover from the transcribed in-game roster (see
     // Game_Roster_CombatPower) — this data source is optional, so a failure here shouldn't
@@ -91,7 +82,7 @@ export class MemberService {
       }
     }
 
-    return { member, legacyLinked: Boolean(legacy) };
+    return { member };
   }
 
   async profile(discordId: string): Promise<Member> {

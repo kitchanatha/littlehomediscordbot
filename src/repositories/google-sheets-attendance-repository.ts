@@ -20,12 +20,13 @@ const CLASS_FIRST_DATE_COL = 1;
 // Created automatically on first use. Auto-created (not part of the guild's original layout).
 const PENDING_SHEET = "Pending_Attendance";
 
-// The "Little Home members" roster spreadsheet (env.GAME_ROSTER_SHEET_ID) has its own "Members"
-// tab (CharacterName, War Check-in, CombatPower, ...) used as a display roster, separate from
-// this bot's own database. Column layout: A = CharacterName, B = War Check-in (single column,
-// header shows the most recent War's date, overwritten each War rather than accumulating history
-// like MASTER_SHEET does — this tab is a live snapshot, not a log).
-const ROSTER_SHEET = "Members";
+// Simple two-column display tab ("Little Home member" — CharacterName, War Check-in) alongside
+// the bot's full operational Members tab, for a quick glance without the extra columns. New rows
+// are added by GoogleSheetsMemberRepository.createMember(); this only ever updates the War
+// Check-in column for a row that already exists. Column layout: A = CharacterName, B = War
+// Check-in (single column, header shows the most recent War's date, overwritten each War rather
+// than accumulating history like MASTER_SHEET does — this tab is a live snapshot, not a log).
+const ROSTER_SHEET = "Little Home member";
 const ROSTER_NAME_COL = 0;
 const ROSTER_CHECKIN_COL = 1;
 
@@ -340,8 +341,8 @@ export class GoogleSheetsAttendanceRepository implements AttendanceRepository {
     return present;
   }
 
-  // Best-effort mirror onto the separate roster spreadsheet's "Members" tab — errors here are
-  // caught by the caller and logged, never allowed to fail the real check-in on MASTER_SHEET.
+  // Best-effort mirror onto the "Little Home member" display tab — errors here are caught by
+  // the caller and logged, never allowed to fail the real check-in on MASTER_SHEET.
   async markRosterCheckin(characterName: string, status: AttendanceStatus, at: Date): Promise<void> {
     if (!env.GAME_ROSTER_SHEET_ID) return;
     const rosterSpreadsheetId = env.GAME_ROSTER_SHEET_ID;

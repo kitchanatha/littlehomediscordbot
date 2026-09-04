@@ -25,12 +25,6 @@ export async function handleRegister(
     `Party: **${m.party || "Not assigned"}**`,
   ];
 
-  if (result.legacyLinked) {
-    lines.push("ℹ️ Old guild data was linked automatically.");
-  } else {
-    lines.push("ℹ️ No legacy record was found.");
-  }
-
   await interaction.editReply(lines.join("\n"));
   console.log(`INFO Member registered: ${discordId}`);
 }

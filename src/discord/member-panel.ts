@@ -73,8 +73,8 @@ export function buildMemberPanelMessage() {
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.register).setLabel("Register").setStyle(ButtonStyle.Success),
     new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.nameClass).setLabel("Change Name/Class").setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.queueCard).setLabel("Card Queue").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.queueAccessory).setLabel("Accessory Queue").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.queueCard).setLabel("เข้าคิวการ์ด").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.queueAccessory).setLabel("เข้าคิวประดับ").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.queueLeave).setLabel("🎁 ได้รับของประมูลแล้ว").setStyle(ButtonStyle.Secondary)
   );
   const row2 = new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -141,8 +141,8 @@ export function buildQueueOnlyMessage() {
       ].join("\n")
     );
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.queueCard).setLabel("Card Queue").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.queueAccessory).setLabel("Accessory Queue").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.queueCard).setLabel("เข้าคิวการ์ด").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.queueAccessory).setLabel("เข้าคิวประดับ").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.queueLeave).setLabel("🎁 ได้รับของประมูลแล้ว").setStyle(ButtonStyle.Success)
   );
   return { embeds: [embed], components: [row] };
@@ -332,7 +332,6 @@ export async function handlePanelModalSubmit(
         `Team: **${result.member.team || "Not assigned"}**`,
         `Party: **${result.member.party || "Not assigned"}**`,
       ];
-      lines.push(result.legacyLinked ? "ℹ️ Old guild data was linked automatically." : "ℹ️ No legacy record was found.");
       await interaction.editReply(lines.join("\n"));
       console.log(`INFO Member registered via panel: ${discordId}`);
     } catch (error) {

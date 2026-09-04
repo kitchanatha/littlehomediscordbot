@@ -4,6 +4,7 @@ import { sheetsClient } from "../google/sheets-client.js";
 import type { HistoryEntry, LegacyMember, Member } from "../types/member.js";
 import type { ClassConfig } from "../types/class.js";
 import { normalizeName } from "../utils/normalize.js";
+import { hexToRgb } from "../utils/color.js";
 import type { MemberRepository } from "./member-repository.js";
 
 const SHEETS = {
@@ -22,6 +23,8 @@ const SHEETS = {
 // is a nice-to-have data source, not core to the bot working — its absence should degrade
 // gracefully, not take the whole bot down.
 const GAME_ROSTER_SHEET = "Members";
+// Plain two-column (CharacterName, War Check-in) display tab kept in sync alongside Members.
+const DISPLAY_SHEET = "Little Home member";
 const MEMBERS_COMBAT_POWER_COL = "K";
 const MEMBERS_COMBAT_POWER_COL_INDEX0 = 10; // K is the 11th column, 0-indexed 10
 
@@ -150,6 +153,111 @@ export class GoogleSheetsMemberRepository implements MemberRepository {
         ]],
       },
     });
+    await this.applyCharacterNameColor(member.discordId, member.className);
+    await this.addToDisplaySheet(member.characterName, member.className);
+  }
+
+  // "Little Home member" is a plain two-column (CharacterName, War Check-in) display tab kept
+  // alongside the full Members tab for a quick glance — best-effort, never allowed to fail
+  // registration/rename if the Sheets API hiccups. Colored the same way as the Members tab.
+  private async addToDisplaySheet(characterName: string, className: string): Promise<void> {
+    try {
+      const rows = await this.values(`${DISPLAY_SHEET}!A2:A`);
+      const exists = rows.some((r) => normalizeName(r[0] ?? "") === normalizeName(characterName));
+      if (!exists) {
+        await this.sheets.spreadsheets.values.append({
+          spreadsheetId: this.spreadsheetId,
+          range: `${DISPLAY_SHEET}!A:B`,
+          valueInputOption: "RAW",
+          insertDataOption: "INSERT_ROWS",
+          requestBody: { values: [[characterName, ""]] },
+        });
+      }
+      await this.colorDisplaySheetRow(characterName, className);
+    } catch (err) {
+      console.error(`WARN Failed to add "${characterName}" to "${DISPLAY_SHEET}" tab`, err);
+    }
+  }
+
+  private async renameInDisplaySheet(oldName: string, newName: string): Promise<void> {
+    try {
+      const rows = await this.values(`${DISPLAY_SHEET}!A2:A`);
+      const idx = rows.findIndex((r) => normalizeName(r[0] ?? "") === normalizeName(oldName));
+      if (idx < 0) return;
+      await this.sheets.spreadsheets.values.update({
+        spreadsheetId: this.spreadsheetId,
+        range: `${DISPLAY_SHEET}!A${idx + 2}`,
+        valueInputOption: "RAW",
+        requestBody: { values: [[newName]] },
+      });
+    } catch (err) {
+      console.error(`WARN Failed to rename "${oldName}" -> "${newName}" on "${DISPLAY_SHEET}" tab`, err);
+    }
+  }
+
+  private async colorDisplaySheetRow(characterName: string, className: string): Promise<void> {
+    const color = await this.classColorRgb(className);
+    if (!color) return;
+    try {
+      await this.ensureSheetIds();
+      const sheetId = this.sheetIds.get(DISPLAY_SHEET);
+      if (sheetId === undefined) return;
+      const rows = await this.values(`${DISPLAY_SHEET}!A2:A`);
+      const idx = rows.findIndex((r) => normalizeName(r[0] ?? "") === normalizeName(characterName));
+      if (idx < 0) return;
+      await this.sheets.spreadsheets.batchUpdate({
+        spreadsheetId: this.spreadsheetId,
+        requestBody: {
+          requests: [{
+            repeatCell: {
+              range: { sheetId, startRowIndex: idx + 1, endRowIndex: idx + 2, startColumnIndex: 0, endColumnIndex: 2 },
+              cell: { userEnteredFormat: { backgroundColor: color } },
+              fields: "userEnteredFormat.backgroundColor",
+            },
+          }],
+        },
+      });
+    } catch (err) {
+      console.error(`WARN Failed to color "${characterName}" on "${DISPLAY_SHEET}" tab`, err);
+    }
+  }
+
+  // Colors the whole member row (A:J) by class, matching the color scheme already used
+  // elsewhere (Classes!ColorHex) — so the live Members tab visually groups by class at a glance,
+  // same as the class attendance tabs already do.
+  private async classColorRgb(className: string): Promise<sheets_v4.Schema$Color | null> {
+    if (!className) return null;
+    const configs = await this.getClassConfigs();
+    const config = configs.find((c) => c.className === className);
+    return config?.colorHex ? hexToRgb(config.colorHex) : null;
+  }
+
+  private async applyCharacterNameColor(discordId: string, className: string): Promise<void> {
+    const color = await this.classColorRgb(className);
+    if (!color) return;
+    await this.ensureSheetIds();
+    const membersSheetId = this.sheetIds.get(SHEETS.members);
+    if (membersSheetId === undefined) return;
+
+    let rowIndex: number;
+    try {
+      rowIndex = await this.findMemberRow(discordId);
+    } catch {
+      return; // row not found yet — nothing to color
+    }
+
+    await this.sheets.spreadsheets.batchUpdate({
+      spreadsheetId: this.spreadsheetId,
+      requestBody: {
+        requests: [{
+          repeatCell: {
+            range: { sheetId: membersSheetId, startRowIndex: rowIndex, endRowIndex: rowIndex + 1, startColumnIndex: 0, endColumnIndex: 10 },
+            cell: { userEnteredFormat: { backgroundColor: color } },
+            fields: "userEnteredFormat.backgroundColor",
+          },
+        }],
+      },
+    });
   }
 
   private async findMemberRow(discordId: string): Promise<number> {
@@ -220,11 +328,14 @@ export class GoogleSheetsMemberRepository implements MemberRepository {
 
   async updateName(member: Member, newName: string, history: HistoryEntry): Promise<Member> {
     await this.atomicMemberChange(member, 3, newName, SHEETS.nameHistory, history);
+    await this.renameInDisplaySheet(member.characterName, newName);
     return { ...member, characterName: newName, lastUpdated: history.changedAt };
   }
 
   async updateClass(member: Member, newClass: string, history: HistoryEntry): Promise<Member> {
     await this.atomicMemberChange(member, 4, newClass, SHEETS.classHistory, history);
+    await this.applyCharacterNameColor(member.discordId, newClass);
+    await this.colorDisplaySheetRow(member.characterName, newClass);
     return { ...member, className: newClass, lastUpdated: history.changedAt };
   }
 
