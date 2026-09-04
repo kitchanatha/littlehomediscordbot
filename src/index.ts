@@ -1,5 +1,6 @@
 import { Events, MessageFlags } from "discord.js";
 import { handleAssign } from "./commands/assign.js";
+import { handleHelp } from "./commands/help.js";
 import { handleClass } from "./commands/class.js";
 import { handleHistory } from "./commands/history.js";
 import { handleName } from "./commands/name.js";
@@ -231,6 +232,9 @@ discordClient.on(Events.InteractionCreate, async (interaction) => {
     await interaction.deferReply({ flags: isPublic ? undefined : MessageFlags.Ephemeral });
 
     switch (interaction.commandName) {
+      case "help":
+        await handleHelp(interaction);
+        break;
       case "register":
         await handleRegister(interaction, service, classService);
         break;

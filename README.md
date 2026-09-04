@@ -6,6 +6,7 @@ writes into the guild's existing tabs rather than owning its own separate data m
 
 ## Features
 
+- **`/help`**: bilingual (English/Thai) list of every command, grouped by category.
 - **Profile management**: `/register`, `/name`, `/class`, `/name_class`, `/profile`, `/history`.
 - **Assignment**: `/assign` a member to a Team (A/B/C/D) and Party (Admin only).
 - **War roster**: `/war_roster`, filterable by team/party.
@@ -192,6 +193,7 @@ To run it on a free, always-on cloud VM instead of your own machine, see
 
 | Command | Member | Admin |
 |---|---|---|
+| `/help` | ✅ | ✅ |
 | `/register` | ✅ | ✅ |
 | `/profile` | ✅ | ✅ |
 | `/name` | ✅ | ✅ |

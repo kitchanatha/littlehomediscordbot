@@ -2,6 +2,9 @@ import { SlashCommandBuilder } from "discord.js";
 
 export const commandDefinitions = [
   new SlashCommandBuilder()
+    .setName("help")
+    .setDescription("Show all available commands / แสดงคำสั่งทั้งหมดที่ใช้ได้"),
+  new SlashCommandBuilder()
     .setName("register")
     .setDescription("Register your Ragnarok character")
     .addStringOption((o) => o.setName("name").setDescription("Your in-game character name").setRequired(true))
