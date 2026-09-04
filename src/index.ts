@@ -14,15 +14,7 @@ import { handleQueueAdd, handleQueueJoin, handleQueueLeave, handleQueueList, han
 import { handleWarCheckin } from "./commands/war-checkin.js";
 import { handleWarLeave } from "./commands/war-leave.js";
 import { handleWarCheckinPanel } from "./commands/war-checkin-panel.js";
-import { handleCheckin } from "./commands/checkin.js";
-import {
-  handleCheckinPanelButton,
-  handleCheckinPanelModalSubmit,
-  handleCheckinPanelSelectMenu,
-  isCheckinPanelButton,
-  isCheckinPanelModal,
-  isCheckinPanelSelectMenu,
-} from "./discord/checkin-panel.js";
+import { handleCheckinPanelButton, isCheckinPanelButton } from "./discord/checkin-panel.js";
 import { env } from "./config/env.js";
 import { discordClient } from "./discord/client.js";
 import { GoogleSheetsMemberRepository } from "./repositories/google-sheets-member-repository.js";
@@ -227,16 +219,6 @@ discordClient.on(Events.MessageCreate, async (message) => {
 discordClient.on(Events.InteractionCreate, async (interaction) => {
   if (interaction.isAutocomplete()) {
     const focusedValue = interaction.options.getFocused().toLowerCase();
-
-    if (interaction.commandName === "checkin") {
-      const members = await attendanceService.getMembersNeedingCheckIn();
-      const filtered = members
-        .filter((m) => m.characterName.toLowerCase().includes(focusedValue))
-        .slice(0, 25);
-      await interaction.respond(filtered.map((m) => ({ name: m.characterName, value: m.memberId })));
-      return;
-    }
-
     const classes = await service.getActiveClasses();
     const filtered = classes
       .filter((c) => c.toLowerCase().includes(focusedValue))
@@ -250,7 +232,7 @@ discordClient.on(Events.InteractionCreate, async (interaction) => {
       if (isCheckinPanelButton(interaction.customId)) {
         await handleCheckinPanelButton(interaction, attendanceService);
       } else {
-        await handlePanelButton(interaction, queueService, classService);
+        await handlePanelButton(interaction, queueService, classService, attendanceService);
       }
     } catch (error) {
       console.error("ERROR Panel button failed", error);
@@ -260,11 +242,7 @@ discordClient.on(Events.InteractionCreate, async (interaction) => {
 
   if (interaction.isStringSelectMenu()) {
     try {
-      if (isCheckinPanelSelectMenu(interaction.customId)) {
-        await handleCheckinPanelSelectMenu(interaction, attendanceService);
-      } else {
-        await handlePanelSelectMenu(interaction);
-      }
+      await handlePanelSelectMenu(interaction);
     } catch (error) {
       console.error("ERROR Panel select menu failed", error);
     }
@@ -273,11 +251,7 @@ discordClient.on(Events.InteractionCreate, async (interaction) => {
 
   if (interaction.isModalSubmit()) {
     try {
-      if (isCheckinPanelModal(interaction.customId)) {
-        await handleCheckinPanelModalSubmit(interaction, attendanceService);
-      } else {
-        await handlePanelModalSubmit(interaction, service, classService);
-      }
+      await handlePanelModalSubmit(interaction, service, classService);
     } catch (error) {
       console.error("ERROR Panel modal submit failed", error);
     }
@@ -348,9 +322,6 @@ discordClient.on(Events.InteractionCreate, async (interaction) => {
         break;
       case "war_checkin_panel":
         await handleWarCheckinPanel(interaction, attendanceService);
-        break;
-      case "checkin":
-        await handleCheckin(interaction, attendanceService);
         break;
     }
   } catch (error) {

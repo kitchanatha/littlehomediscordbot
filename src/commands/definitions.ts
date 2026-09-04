@@ -59,10 +59,6 @@ export const commandDefinitions = [
     .setName("war_checkin_panel")
     .setDescription("Post a clickable checklist of members not yet checked in today (Admin only)"),
   new SlashCommandBuilder()
-    .setName("checkin")
-    .setDescription("Check in a specific member by name, with autocomplete (Admin only)")
-    .addStringOption((o) => o.setName("member").setDescription("Character name").setRequired(true).setAutocomplete(true)),
-  new SlashCommandBuilder()
     .setName("queue_join")
     .setDescription("Join a queue")
     .addStringOption((o) =>

@@ -28,5 +28,13 @@ export interface AttendanceRepository {
    * sheet for "today" — used to build the admin check-in panel's "still needs checking in" list.
    */
   getPresentTodayNormalizedNames(at: Date): Promise<Set<string>>;
+  /**
+   * Mirrors a check-in/leave onto the separate "Little Home members" roster spreadsheet's
+   * Members tab (a display snapshot, not part of this bot's own database). Silently skips (no
+   * error) if the roster spreadsheet isn't configured or the character isn't found there. Callers
+   * should still wrap this in try/catch — a Sheets API failure here should be logged and ignored,
+   * never allowed to fail the real check-in this accompanies.
+   */
+  markRosterCheckin(characterName: string, status: AttendanceStatus, at: Date): Promise<void>;
   validateReadiness(): Promise<void>;
 }

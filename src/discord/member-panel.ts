@@ -12,6 +12,7 @@ import {
   TextInputStyle,
 } from "discord.js";
 import { MemberService, UserError } from "../services/member-service.js";
+import type { AttendanceService } from "../services/attendance-service.js";
 import type { ClassService } from "../services/class-service.js";
 import type { QueueService } from "../services/queue-service.js";
 
@@ -33,6 +34,9 @@ export const PANEL_BUTTON_IDS = {
   nameClass: "panel_name_class",
   queueCard: "panel_queue_card",
   queueAccessory: "panel_queue_accessory",
+  queueLeave: "panel_queue_leave",
+  warCheckin: "panel_war_checkin",
+  warLeave: "panel_war_leave",
 } as const;
 
 const SELECT_IDS = {
@@ -59,6 +63,10 @@ export function buildMemberPanelMessage() {
         "**Register** — first-time registration / ลงทะเบียนครั้งแรก",
         "**Change Name/Class** — update your existing profile / แก้ไขชื่อหรืออาชีพของคุณ",
         "**Card Queue** / **Accessory Queue** — join that queue directly / เข้าคิวการ์ดหรือคิวประดับโดยตรง",
+        "**ได้รับของประมูลแล้ว** — leave the queue once you've received your item / ออกจากคิวเมื่อได้รับของแล้ว",
+        "**War Check-in** — mark yourself present for today's War / เช็คอินวอร์วันนี้ด้วยตัวเอง",
+        "**War Leave** — let the guild know you can't make today's War / แจ้งลาวอร์วันนี้",
+        "**ประมูลของ** — open the item auction site / เปิดเว็บประมูลไอเทม",
       ].join("\n")
     );
 
@@ -66,9 +74,88 @@ export function buildMemberPanelMessage() {
     new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.register).setLabel("Register").setStyle(ButtonStyle.Success),
     new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.nameClass).setLabel("Change Name/Class").setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.queueCard).setLabel("Card Queue").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.queueAccessory).setLabel("Accessory Queue").setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.queueAccessory).setLabel("Accessory Queue").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.queueLeave).setLabel("🎁 ได้รับของประมูลแล้ว").setStyle(ButtonStyle.Secondary)
+  );
+  const row2 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.warCheckin).setLabel("✅ War Check-in").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.warLeave).setLabel("😷 War Leave").setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setLabel("🔨 ประมูลของ").setStyle(ButtonStyle.Link).setURL("https://kitchanatha.github.io/guild-item-reservation/")
   );
 
+  return { embeds: [embed], components: [row, row2] };
+}
+
+export function buildWarCheckinOnlyMessage() {
+  const embed = new EmbedBuilder()
+    .setTitle("✅ War Check-in / เช็คอินวอร์")
+    .setColor(0x57f287)
+    .setDescription("Click below to mark yourself present for today's War.\nคลิกด้านล่างเพื่อเช็คอินวอร์วันนี้");
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.warCheckin).setLabel("✅ War Check-in").setStyle(ButtonStyle.Success)
+  );
+  return { embeds: [embed], components: [row] };
+}
+
+export function buildWarLeaveOnlyMessage() {
+  const embed = new EmbedBuilder()
+    .setTitle("😷 War Leave / แจ้งลาวอร์")
+    .setColor(0xed4245)
+    .setDescription("Click below to let the guild know you can't make today's War.\nคลิกด้านล่างเพื่อแจ้งลาวอร์วันนี้");
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.warLeave).setLabel("😷 War Leave").setStyle(ButtonStyle.Danger)
+  );
+  return { embeds: [embed], components: [row] };
+}
+
+export function buildRegisterOnlyMessage() {
+  const embed = new EmbedBuilder()
+    .setTitle("📝 Register / ลงทะเบียน")
+    .setColor(0x57f287)
+    .setDescription("Click below to register your character for the first time.\nคลิกด้านล่างเพื่อลงทะเบียนครั้งแรก");
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.register).setLabel("Register").setStyle(ButtonStyle.Success)
+  );
+  return { embeds: [embed], components: [row] };
+}
+
+export function buildNameClassOnlyMessage() {
+  const embed = new EmbedBuilder()
+    .setTitle("✏️ Change Name/Class / แก้ไขชื่อหรืออาชีพ")
+    .setColor(0x5865f2)
+    .setDescription("Click below to update your character name and/or class.\nคลิกด้านล่างเพื่อแก้ไขชื่อหรืออาชีพของคุณ");
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.nameClass).setLabel("Change Name/Class").setStyle(ButtonStyle.Primary)
+  );
+  return { embeds: [embed], components: [row] };
+}
+
+export function buildQueueOnlyMessage() {
+  const embed = new EmbedBuilder()
+    .setTitle("🎟️ Item Queue / คิวไอเทม")
+    .setColor(0x5865f2)
+    .setDescription(
+      [
+        "**Card Queue** / **Accessory Queue** — join that queue / เข้าคิวการ์ดหรือคิวประดับ",
+        "**ได้รับของประมูลแล้ว** — leave the queue once you've received your item / ออกจากคิวเมื่อได้รับของแล้ว",
+      ].join("\n")
+    );
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.queueCard).setLabel("Card Queue").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.queueAccessory).setLabel("Accessory Queue").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.queueLeave).setLabel("🎁 ได้รับของประมูลแล้ว").setStyle(ButtonStyle.Success)
+  );
+  return { embeds: [embed], components: [row] };
+}
+
+export function buildAuctionOnlyMessage() {
+  const embed = new EmbedBuilder()
+    .setTitle("🔨 ประมูลของ / Item Auction")
+    .setColor(0xfee75c)
+    .setDescription("Click below to open the item auction site.\nคลิกด้านล่างเพื่อเปิดเว็บประมูลไอเทม");
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setLabel("🔨 ประมูลของ").setStyle(ButtonStyle.Link).setURL("https://kitchanatha.github.io/guild-item-reservation/")
+  );
   return { embeds: [embed], components: [row] };
 }
 
@@ -85,7 +172,8 @@ function nameModal(customId: string, title: string, label: string, required: boo
 export async function handlePanelButton(
   interaction: ButtonInteraction,
   queueService: QueueService,
-  classService: ClassService
+  classService: ClassService,
+  attendanceService: AttendanceService
 ): Promise<void> {
   switch (interaction.customId) {
     case PANEL_BUTTON_IDS.register: {
@@ -130,6 +218,62 @@ export async function handlePanelButton(
           await interaction.editReply(error.message);
         } else {
           console.error("ERROR Panel queue join failed", error);
+          await interaction.editReply("❌ Something went wrong. Please try again later.\n❌ เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง");
+        }
+      }
+      return;
+    }
+    case PANEL_BUTTON_IDS.queueLeave: {
+      await interaction.deferReply({ ephemeral: true });
+      const discordId = interaction.user.id;
+      try {
+        const left = await queueService.leaveAllActiveQueues(discordId, discordId);
+        if (left.length === 0) {
+          await interaction.editReply("ℹ️ You're not currently in any queue.\nℹ️ คุณไม่ได้อยู่ในคิวใดๆ อยู่");
+        } else {
+          await interaction.editReply(
+            `✅ Left the ${left.join(" and ")} queue${left.length > 1 ? "s" : ""}. Enjoy your item!\n✅ ออกจากคิว${left.join("และ")}แล้ว ยินดีด้วยนะ!`
+          );
+        }
+      } catch (error) {
+        if (error instanceof UserError) {
+          await interaction.editReply(error.message);
+        } else {
+          console.error("ERROR Panel queue leave failed", error);
+          await interaction.editReply("❌ Something went wrong. Please try again later.\n❌ เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง");
+        }
+      }
+      return;
+    }
+    case PANEL_BUTTON_IDS.warCheckin: {
+      await interaction.deferReply({ ephemeral: true });
+      try {
+        const result = await attendanceService.checkIn(interaction.user.id);
+        await interaction.editReply(
+          `✅ Checked in for War (${result.dateLabel}) as **${result.characterName}**.\n✅ เช็คอินวอร์ (${result.dateLabel}) ในชื่อ **${result.characterName}** แล้ว`
+        );
+      } catch (error) {
+        if (error instanceof UserError) {
+          await interaction.editReply(error.message);
+        } else {
+          console.error("ERROR Panel war check-in failed", error);
+          await interaction.editReply("❌ Something went wrong. Please try again later.\n❌ เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง");
+        }
+      }
+      return;
+    }
+    case PANEL_BUTTON_IDS.warLeave: {
+      await interaction.deferReply({ ephemeral: true });
+      try {
+        const result = await attendanceService.requestLeave(interaction.user.id);
+        await interaction.editReply(
+          `✅ Leave recorded for **${result.characterName}** (${result.dateLabel}).\n✅ บันทึกการลาสำหรับ **${result.characterName}** แล้ว (${result.dateLabel})`
+        );
+      } catch (error) {
+        if (error instanceof UserError) {
+          await interaction.editReply(error.message);
+        } else {
+          console.error("ERROR Panel war leave failed", error);
           await interaction.editReply("❌ Something went wrong. Please try again later.\n❌ เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง");
         }
       }

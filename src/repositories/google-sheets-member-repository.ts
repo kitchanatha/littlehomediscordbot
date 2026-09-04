@@ -21,7 +21,7 @@ const SHEETS = {
 // part of SHEETS above: that list is required at startup (validateReadiness), and this sheet
 // is a nice-to-have data source, not core to the bot working — its absence should degrade
 // gracefully, not take the whole bot down.
-const GAME_ROSTER_SHEET = "Game_Roster_CombatPower";
+const GAME_ROSTER_SHEET = "Members";
 const MEMBERS_COMBAT_POWER_COL = "K";
 const MEMBERS_COMBAT_POWER_COL_INDEX0 = 10; // K is the 11th column, 0-indexed 10
 
@@ -704,15 +704,21 @@ export class GoogleSheetsMemberRepository implements MemberRepository {
   }
 
   async findGameRosterCombatPower(characterName: string): Promise<string | null> {
+    if (!env.GAME_ROSTER_SHEET_ID) return null; // not configured — nothing to carry over
     let rows: string[][];
     try {
-      rows = await this.values(`${GAME_ROSTER_SHEET}!A2:B`);
+      const response = await this.sheets.spreadsheets.values.get({
+        spreadsheetId: env.GAME_ROSTER_SHEET_ID,
+        // Columns on the roster's "Members" tab: A=CharacterName, B=War Check-in, C=CombatPower.
+        range: `${GAME_ROSTER_SHEET}!A2:C`,
+      });
+      rows = (response.data.values ?? []) as string[][];
     } catch {
       return null; // sheet doesn't exist yet — not fatal, just nothing to carry over
     }
     const target = normalizeName(characterName);
     const match = rows.find((r) => normalizeName(r[0] ?? "") === target);
-    return match?.[1] ?? null;
+    return match?.[2] ?? null;
   }
 
   async setCombatPower(memberId: string, combatPower: string): Promise<void> {

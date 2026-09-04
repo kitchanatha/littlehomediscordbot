@@ -232,6 +232,27 @@ export class QueueService {
     return status;
   }
 
+  /**
+   * Leaves every queue (Card and/or Accessory) the member is currently active in — backs the
+   * "ได้รับของประมูลแล้ว" (received the auction item) panel button, which doesn't ask which
+   * queue since most members are only ever active in one at a time.
+   */
+  async leaveAllActiveQueues(discordId: string, changedByDiscordId: string): Promise<QueueType[]> {
+    const status = await this.getMemberQueueStatus(discordId);
+    const left: QueueType[] = [];
+
+    if (status.card?.position !== undefined) {
+      await this.dequeue({ targetDiscordId: discordId, queueType: "Card", changedByDiscordId });
+      left.push("Card");
+    }
+    if (status.accessory?.position !== undefined) {
+      await this.dequeue({ targetDiscordId: discordId, queueType: "Accessory", changedByDiscordId });
+      left.push("Accessory");
+    }
+
+    return left;
+  }
+
   async cleanupMemberQueues(discordId: string): Promise<void> {
     const queueTypes: QueueType[] = ["Card", "Accessory"];
     const timestamp = this.now();

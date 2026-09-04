@@ -21,15 +21,25 @@ export class AttendanceService {
     return member;
   }
 
+  private async mirrorToRoster(characterName: string, status: "มา" | "แจ้งลาแล้ว", at: Date): Promise<void> {
+    try {
+      await this.attendanceRepository.markRosterCheckin(characterName, status, at);
+    } catch (error) {
+      console.error(`ERROR Failed to mirror check-in to roster sheet for ${characterName}`, error);
+    }
+  }
+
   async checkIn(discordId: string): Promise<{ characterName: string; dateLabel: string }> {
     const member = await this.resolveActiveMember(discordId);
     const result = await this.attendanceRepository.markAttendance(member.characterName, member.className, "มา", new Date());
+    await this.mirrorToRoster(member.characterName, "มา", new Date());
     return { characterName: member.characterName, dateLabel: result.dateLabel };
   }
 
   async requestLeave(discordId: string): Promise<{ characterName: string; dateLabel: string }> {
     const member = await this.resolveActiveMember(discordId);
     const result = await this.attendanceRepository.markAttendance(member.characterName, member.className, "แจ้งลาแล้ว", new Date());
+    await this.mirrorToRoster(member.characterName, "แจ้งลาแล้ว", new Date());
     return { characterName: member.characterName, dateLabel: result.dateLabel };
   }
 
@@ -64,6 +74,7 @@ export class AttendanceService {
     const member = members.find((m) => m.memberId === memberId);
     if (!member) throw new UserError("❌ Member not found.");
     const result = await this.attendanceRepository.markAttendance(member.characterName, member.className, "มา", new Date());
+    await this.mirrorToRoster(member.characterName, "มา", new Date());
     return { characterName: member.characterName, dateLabel: result.dateLabel };
   }
 

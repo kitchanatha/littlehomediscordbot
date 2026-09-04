@@ -20,6 +20,15 @@ const CLASS_FIRST_DATE_COL = 1;
 // Created automatically on first use. Auto-created (not part of the guild's original layout).
 const PENDING_SHEET = "Pending_Attendance";
 
+// The "Little Home members" roster spreadsheet (env.GAME_ROSTER_SHEET_ID) has its own "Members"
+// tab (CharacterName, War Check-in, CombatPower, ...) used as a display roster, separate from
+// this bot's own database. Column layout: A = CharacterName, B = War Check-in (single column,
+// header shows the most recent War's date, overwritten each War rather than accumulating history
+// like MASTER_SHEET does — this tab is a live snapshot, not a log).
+const ROSTER_SHEET = "Members";
+const ROSTER_NAME_COL = 0;
+const ROSTER_CHECKIN_COL = 1;
+
 function colLetter(index0: number): string {
   let n = index0 + 1;
   let s = "";
@@ -329,6 +338,52 @@ export class GoogleSheetsAttendanceRepository implements AttendanceRepository {
       if (name && row[dateCol] === "มา") present.add(normalizeName(name));
     }
     return present;
+  }
+
+  // Best-effort mirror onto the separate roster spreadsheet's "Members" tab — errors here are
+  // caught by the caller and logged, never allowed to fail the real check-in on MASTER_SHEET.
+  async markRosterCheckin(characterName: string, status: AttendanceStatus, at: Date): Promise<void> {
+    if (!env.GAME_ROSTER_SHEET_ID) return;
+    const rosterSpreadsheetId = env.GAME_ROSTER_SHEET_ID;
+
+    const rows = (
+      await this.sheets.spreadsheets.values.get({
+        spreadsheetId: rosterSpreadsheetId,
+        range: `${ROSTER_SHEET}!A1:B`,
+      })
+    ).data.values ?? [];
+
+    const target = normalizeName(characterName);
+    const targetCore = coreName(characterName);
+    let rowIndex1 = -1;
+    for (let i = 1; i < rows.length; i++) {
+      const rowName = rows[i]?.[ROSTER_NAME_COL] ?? "";
+      if (normalizeName(rowName) === target || (targetCore && coreName(rowName) === targetCore)) {
+        rowIndex1 = i + 1; // 1-indexed sheet row
+        break;
+      }
+    }
+    if (rowIndex1 < 0) {
+      console.warn(`WARN "${characterName}" not found on roster "${ROSTER_SHEET}" tab — skipping mirror.`);
+      return;
+    }
+
+    const header = canonicalHeader(at);
+    if (rows[0]?.[ROSTER_CHECKIN_COL] !== header) {
+      await this.sheets.spreadsheets.values.update({
+        spreadsheetId: rosterSpreadsheetId,
+        range: `${ROSTER_SHEET}!${colLetter(ROSTER_CHECKIN_COL)}1`,
+        valueInputOption: "RAW",
+        requestBody: { values: [[header]] },
+      });
+    }
+
+    await this.sheets.spreadsheets.values.update({
+      spreadsheetId: rosterSpreadsheetId,
+      range: `${ROSTER_SHEET}!${colLetter(ROSTER_CHECKIN_COL)}${rowIndex1}`,
+      valueInputOption: "RAW",
+      requestBody: { values: [[status]] },
+    });
   }
 
   async validateReadiness(): Promise<void> {

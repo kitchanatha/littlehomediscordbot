@@ -6,6 +6,11 @@ const schema = z.object({
   DISCORD_CLIENT_ID: z.string().min(1),
   DISCORD_GUILD_ID: z.string().min(1),
   GOOGLE_SHEET_ID: z.string().min(1),
+  // Separate spreadsheet holding Game_Roster_CombatPower (the durable in-game roster, kept
+  // apart from the guild's main sheet for cleaner organization — see src/scripts/update-combat-power.ts
+  // and GoogleSheetsMemberRepository.findGameRosterCombatPower). Optional: this data source is
+  // a nice-to-have, not core to the bot working, so its absence degrades gracefully.
+  GAME_ROSTER_SHEET_ID: z.string().optional().default(""),
   GOOGLE_SERVICE_ACCOUNT_EMAIL: z.string().email(),
   GOOGLE_PRIVATE_KEY: z.string().min(1),
   ASSIGN_ROLE_IDS: z.string().min(1),
@@ -36,6 +41,7 @@ if (!parsed.success) {
 
 export const env = {
   ...parsed.data,
+  GAME_ROSTER_SHEET_ID: parsed.data.GAME_ROSTER_SHEET_ID.trim(),
   GOOGLE_PRIVATE_KEY: parsed.data.GOOGLE_PRIVATE_KEY.replace(/\\n/g, "\n"),
   ASSIGN_ROLE_IDS: parsed.data.ASSIGN_ROLE_IDS.split(",").map((id) => id.trim()).filter(Boolean),
   ENABLE_MEMBERS_INTENT: parsed.data.ENABLE_MEMBERS_INTENT === "true",
