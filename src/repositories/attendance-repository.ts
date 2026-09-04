@@ -23,5 +23,10 @@ export interface AttendanceRepository {
    * register, then replay each entry through markAttendance with their real name/class).
    */
   resolvePendingCheckIns(discordId: string): Promise<{ status: AttendanceStatus; at: Date }[]>;
+  /**
+   * Character names (normalizeName'd) already marked present ("มา") on the master attendance
+   * sheet for "today" — used to build the admin check-in panel's "still needs checking in" list.
+   */
+  getPresentTodayNormalizedNames(at: Date): Promise<Set<string>>;
   validateReadiness(): Promise<void>;
 }

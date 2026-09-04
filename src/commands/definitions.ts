@@ -56,6 +56,9 @@ export const commandDefinitions = [
     .setName("war_leave")
     .setDescription("Let the guild know you can't make today's War"),
   new SlashCommandBuilder()
+    .setName("war_checkin_panel")
+    .setDescription("Post a clickable checklist of members not yet checked in today (Admin only)"),
+  new SlashCommandBuilder()
     .setName("queue_join")
     .setDescription("Join a queue")
     .addStringOption((o) =>

@@ -1,5 +1,7 @@
 import type { MemberRepository } from "../repositories/member-repository.js";
 import type { AttendanceRepository } from "../repositories/attendance-repository.js";
+import type { Member } from "../types/member.js";
+import { normalizeName } from "../utils/normalize.js";
 import { UserError } from "./member-service.js";
 
 export class AttendanceService {
@@ -43,5 +45,25 @@ export class AttendanceService {
       await this.attendanceRepository.markAttendance(characterName, className, entry.status, entry.at);
     }
     return pending.length;
+  }
+
+  /** Active members not yet marked present today — backs the admin check-in panel's list. */
+  async getMembersNeedingCheckIn(): Promise<Member[]> {
+    const [members, presentToday] = await Promise.all([
+      this.memberRepository.getAllActiveMembers(),
+      this.attendanceRepository.getPresentTodayNormalizedNames(new Date()),
+    ]);
+    return members
+      .filter((m) => !presentToday.has(normalizeName(m.characterName)))
+      .sort((a, b) => a.characterName.localeCompare(b.characterName));
+  }
+
+  /** Checks in a specific member by ID — used by the admin check-in panel's buttons. */
+  async checkInMember(memberId: string): Promise<{ characterName: string; dateLabel: string }> {
+    const members = await this.memberRepository.getAllActiveMembers();
+    const member = members.find((m) => m.memberId === memberId);
+    if (!member) throw new UserError("❌ Member not found.");
+    const result = await this.attendanceRepository.markAttendance(member.characterName, member.className, "มา", new Date());
+    return { characterName: member.characterName, dateLabel: result.dateLabel };
   }
 }

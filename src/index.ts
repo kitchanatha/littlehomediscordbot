@@ -13,6 +13,13 @@ import { handleWarRoster } from "./commands/war-roster.js";
 import { handleQueueAdd, handleQueueJoin, handleQueueLeave, handleQueueList, handleQueueRemove, handleQueueStatus } from "./commands/queue.js";
 import { handleWarCheckin } from "./commands/war-checkin.js";
 import { handleWarLeave } from "./commands/war-leave.js";
+import { handleWarCheckinPanel } from "./commands/war-checkin-panel.js";
+import {
+  handleCheckinPanelButton,
+  handleCheckinPanelSelectMenu,
+  isCheckinPanelButton,
+  isCheckinPanelSelectMenu,
+} from "./discord/checkin-panel.js";
 import { env } from "./config/env.js";
 import { discordClient } from "./discord/client.js";
 import { GoogleSheetsMemberRepository } from "./repositories/google-sheets-member-repository.js";
@@ -227,7 +234,11 @@ discordClient.on(Events.InteractionCreate, async (interaction) => {
 
   if (interaction.isButton()) {
     try {
-      await handlePanelButton(interaction, queueService, classService);
+      if (isCheckinPanelButton(interaction.customId)) {
+        await handleCheckinPanelButton(interaction, attendanceService);
+      } else {
+        await handlePanelButton(interaction, queueService, classService);
+      }
     } catch (error) {
       console.error("ERROR Panel button failed", error);
     }
@@ -236,7 +247,11 @@ discordClient.on(Events.InteractionCreate, async (interaction) => {
 
   if (interaction.isStringSelectMenu()) {
     try {
-      await handlePanelSelectMenu(interaction);
+      if (isCheckinPanelSelectMenu(interaction.customId)) {
+        await handleCheckinPanelSelectMenu(interaction, attendanceService);
+      } else {
+        await handlePanelSelectMenu(interaction);
+      }
     } catch (error) {
       console.error("ERROR Panel select menu failed", error);
     }
@@ -254,7 +269,7 @@ discordClient.on(Events.InteractionCreate, async (interaction) => {
 
   if (!interaction.isChatInputCommand()) return;
 
-  const isPublic = ["war_roster", "queue_list"].includes(interaction.commandName);
+  const isPublic = ["war_roster", "queue_list", "war_checkin_panel"].includes(interaction.commandName);
 
   try {
     await interaction.deferReply({ flags: isPublic ? undefined : MessageFlags.Ephemeral });
@@ -313,6 +328,9 @@ discordClient.on(Events.InteractionCreate, async (interaction) => {
         break;
       case "war_leave":
         await handleWarLeave(interaction, attendanceService);
+        break;
+      case "war_checkin_panel":
+        await handleWarCheckinPanel(interaction, attendanceService);
         break;
     }
   } catch (error) {

@@ -317,6 +317,20 @@ export class GoogleSheetsAttendanceRepository implements AttendanceRepository {
     return matches.map((m) => ({ status: m.status, at: m.at }));
   }
 
+  async getPresentTodayNormalizedNames(at: Date): Promise<Set<string>> {
+    const rows = await this.values(`${MASTER_SHEET}!A1:Z1200`);
+    const header = rows[0] ?? [];
+    const dateCol = header.findIndex((h) => h && headerMatchesDate(h, at));
+    if (dateCol < 0) return new Set();
+
+    const present = new Set<string>();
+    for (const row of rows.slice(1)) {
+      const name = (row[MASTER_NAME_COL] ?? "").trim();
+      if (name && row[dateCol] === "มา") present.add(normalizeName(name));
+    }
+    return present;
+  }
+
   async validateReadiness(): Promise<void> {
     await this.ensureSheetIds();
     if (!this.sheetIds.has(MASTER_SHEET)) {
