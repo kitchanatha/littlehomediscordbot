@@ -66,4 +66,31 @@ export class AttendanceService {
     const result = await this.attendanceRepository.markAttendance(member.characterName, member.className, "มา", new Date());
     return { characterName: member.characterName, dateLabel: result.dateLabel };
   }
+
+  /**
+   * Checks in every registered, active member among the given Discord IDs who isn't already
+   * present today — backs the panel's "Sync from Voice" button (pass the IDs of everyone
+   * currently connected to the War voice channel). Unregistered IDs are silently skipped, not
+   * an error — that's the pending-check-in path's job, not this one's.
+   */
+  async checkInMembersByDiscordIds(discordIds: string[]): Promise<string[]> {
+    const [members, presentToday] = await Promise.all([
+      this.memberRepository.getAllActiveMembers(),
+      this.attendanceRepository.getPresentTodayNormalizedNames(new Date()),
+    ]);
+    const byDiscordId = new Map(members.map((m) => [m.discordId, m]));
+
+    const checkedIn: string[] = [];
+    for (const discordId of discordIds) {
+      const member = byDiscordId.get(discordId);
+      if (!member || presentToday.has(normalizeName(member.characterName))) continue;
+      try {
+        await this.attendanceRepository.markAttendance(member.characterName, member.className, "มา", new Date());
+        checkedIn.push(member.characterName);
+      } catch (error) {
+        console.error(`ERROR Sync-from-voice check-in failed for ${member.characterName}`, error);
+      }
+    }
+    return checkedIn;
+  }
 }

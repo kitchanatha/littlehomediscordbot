@@ -14,10 +14,13 @@ import { handleQueueAdd, handleQueueJoin, handleQueueLeave, handleQueueList, han
 import { handleWarCheckin } from "./commands/war-checkin.js";
 import { handleWarLeave } from "./commands/war-leave.js";
 import { handleWarCheckinPanel } from "./commands/war-checkin-panel.js";
+import { handleCheckin } from "./commands/checkin.js";
 import {
   handleCheckinPanelButton,
+  handleCheckinPanelModalSubmit,
   handleCheckinPanelSelectMenu,
   isCheckinPanelButton,
+  isCheckinPanelModal,
   isCheckinPanelSelectMenu,
 } from "./discord/checkin-panel.js";
 import { env } from "./config/env.js";
@@ -224,6 +227,16 @@ discordClient.on(Events.MessageCreate, async (message) => {
 discordClient.on(Events.InteractionCreate, async (interaction) => {
   if (interaction.isAutocomplete()) {
     const focusedValue = interaction.options.getFocused().toLowerCase();
+
+    if (interaction.commandName === "checkin") {
+      const members = await attendanceService.getMembersNeedingCheckIn();
+      const filtered = members
+        .filter((m) => m.characterName.toLowerCase().includes(focusedValue))
+        .slice(0, 25);
+      await interaction.respond(filtered.map((m) => ({ name: m.characterName, value: m.memberId })));
+      return;
+    }
+
     const classes = await service.getActiveClasses();
     const filtered = classes
       .filter((c) => c.toLowerCase().includes(focusedValue))
@@ -260,7 +273,11 @@ discordClient.on(Events.InteractionCreate, async (interaction) => {
 
   if (interaction.isModalSubmit()) {
     try {
-      await handlePanelModalSubmit(interaction, service, classService);
+      if (isCheckinPanelModal(interaction.customId)) {
+        await handleCheckinPanelModalSubmit(interaction, attendanceService);
+      } else {
+        await handlePanelModalSubmit(interaction, service, classService);
+      }
     } catch (error) {
       console.error("ERROR Panel modal submit failed", error);
     }
@@ -331,6 +348,9 @@ discordClient.on(Events.InteractionCreate, async (interaction) => {
         break;
       case "war_checkin_panel":
         await handleWarCheckinPanel(interaction, attendanceService);
+        break;
+      case "checkin":
+        await handleCheckin(interaction, attendanceService);
         break;
     }
   } catch (error) {
