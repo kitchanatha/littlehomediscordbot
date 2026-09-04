@@ -6,6 +6,8 @@ import {
   EmbedBuilder,
   ModalBuilder,
   ModalSubmitInteraction,
+  StringSelectMenuBuilder,
+  StringSelectMenuInteraction,
   TextInputBuilder,
   TextInputStyle,
 } from "discord.js";
@@ -15,8 +17,17 @@ import type { QueueService } from "../services/queue-service.js";
 
 // Persistent button panel posted once into a channel (see src/scripts/post-member-panel.ts) so
 // members can register, update their profile, and join a queue without typing a slash command.
-// customIds are fixed strings — buttons keep working across bot restarts as long as this file's
-// handlers stay wired up in index.ts, no dependency on the original interaction staying "live".
+// customIds are fixed strings — buttons/menus keep working across bot restarts as long as this
+// file's handlers stay wired up in index.ts, no dependency on the original interaction staying
+// "live".
+//
+// Discord modals can only contain text fields, not dropdowns — so class selection can't live
+// inside the same modal as the character name. Flow instead goes: button click -> a real
+// dropdown (StringSelectMenu) of classes -> picking one opens a modal for just the name. The
+// chosen class is threaded through via the modal's customId (`...|<className>`), not any
+// server-side session state.
+const SKIP_CLASS = "__SKIP__";
+
 export const PANEL_BUTTON_IDS = {
   register: "panel_register",
   nameClass: "panel_name_class",
@@ -24,16 +35,19 @@ export const PANEL_BUTTON_IDS = {
   queueAccessory: "panel_queue_accessory",
 } as const;
 
-const MODAL_IDS = {
+const SELECT_IDS = {
+  registerClass: "panel_select_register_class",
+  nameClassClass: "panel_select_nameclass_class",
+} as const;
+
+const MODAL_PREFIX = {
   register: "panel_modal_register",
   nameClass: "panel_modal_name_class",
 } as const;
 
 const FIELD_IDS = {
-  registerName: "register_name",
-  registerClass: "register_class",
+  characterName: "character_name",
   newName: "new_name",
-  newClass: "new_class",
 } as const;
 
 export function buildMemberPanelMessage() {
@@ -58,53 +72,49 @@ export function buildMemberPanelMessage() {
   return { embeds: [embed], components: [row] };
 }
 
-// Buttons that open a modal must call showModal() as the FIRST response — no deferReply first.
-// Buttons that act immediately (the two queue joins) defer + edit like a normal slash command.
+function nameModal(customId: string, title: string, label: string, required: boolean): ModalBuilder {
+  const input = new TextInputBuilder()
+    .setCustomId(FIELD_IDS.characterName)
+    .setLabel(label)
+    .setStyle(TextInputStyle.Short)
+    .setRequired(required)
+    .setMaxLength(50);
+  return new ModalBuilder().setCustomId(customId).setTitle(title).addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(input));
+}
+
 export async function handlePanelButton(
   interaction: ButtonInteraction,
-  queueService: QueueService
+  queueService: QueueService,
+  classService: ClassService
 ): Promise<void> {
   switch (interaction.customId) {
     case PANEL_BUTTON_IDS.register: {
-      const modal = new ModalBuilder().setCustomId(MODAL_IDS.register).setTitle("Register / ลงทะเบียน");
-      const nameInput = new TextInputBuilder()
-        .setCustomId(FIELD_IDS.registerName)
-        .setLabel("Character Name / ชื่อตัวละคร")
-        .setStyle(TextInputStyle.Short)
-        .setRequired(true)
-        .setMaxLength(50);
-      const classInput = new TextInputBuilder()
-        .setCustomId(FIELD_IDS.registerClass)
-        .setLabel("Class (e.g. Knight, Priest) / อาชีพ")
-        .setStyle(TextInputStyle.Short)
-        .setRequired(true)
-        .setMaxLength(30);
-      modal.addComponents(
-        new ActionRowBuilder<TextInputBuilder>().addComponents(nameInput),
-        new ActionRowBuilder<TextInputBuilder>().addComponents(classInput)
-      );
-      await interaction.showModal(modal);
+      const classes = await classService.getActiveClasses();
+      const menu = new StringSelectMenuBuilder()
+        .setCustomId(SELECT_IDS.registerClass)
+        .setPlaceholder("Select your class / เลือกอาชีพของคุณ")
+        .addOptions(classes.map((c) => ({ label: c, value: c })));
+      await interaction.reply({
+        content: "Step 1/2 — pick your class / เลือกอาชีพของคุณ",
+        components: [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu)],
+        ephemeral: true,
+      });
       return;
     }
     case PANEL_BUTTON_IDS.nameClass: {
-      const modal = new ModalBuilder().setCustomId(MODAL_IDS.nameClass).setTitle("Change Name/Class / แก้ไขชื่อหรืออาชีพ");
-      const nameInput = new TextInputBuilder()
-        .setCustomId(FIELD_IDS.newName)
-        .setLabel("New Character Name (optional) / ชื่อใหม่")
-        .setStyle(TextInputStyle.Short)
-        .setRequired(false)
-        .setMaxLength(50);
-      const classInput = new TextInputBuilder()
-        .setCustomId(FIELD_IDS.newClass)
-        .setLabel("New Class (optional) / อาชีพใหม่")
-        .setStyle(TextInputStyle.Short)
-        .setRequired(false)
-        .setMaxLength(30);
-      modal.addComponents(
-        new ActionRowBuilder<TextInputBuilder>().addComponents(nameInput),
-        new ActionRowBuilder<TextInputBuilder>().addComponents(classInput)
-      );
-      await interaction.showModal(modal);
+      const classes = await classService.getActiveClasses();
+      const menu = new StringSelectMenuBuilder()
+        .setCustomId(SELECT_IDS.nameClassClass)
+        .setPlaceholder("Select a new class, or skip / เลือกอาชีพใหม่ หรือข้าม")
+        .addOptions(
+          { label: "— Keep current class / ไม่เปลี่ยนอาชีพ —", value: SKIP_CLASS },
+          ...classes.map((c) => ({ label: c, value: c }))
+        );
+      await interaction.reply({
+        content: "Step 1/2 — change class (optional) / เปลี่ยนอาชีพ (ไม่บังคับ)",
+        components: [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu)],
+        ephemeral: true,
+      });
       return;
     }
     case PANEL_BUTTON_IDS.queueCard:
@@ -128,23 +138,47 @@ export async function handlePanelButton(
   }
 }
 
+export async function handlePanelSelectMenu(interaction: StringSelectMenuInteraction): Promise<void> {
+  const chosen = interaction.values[0];
+
+  if (interaction.customId === SELECT_IDS.registerClass) {
+    await interaction.showModal(
+      nameModal(`${MODAL_PREFIX.register}|${chosen}`, "Register / ลงทะเบียน", "Character Name / ชื่อตัวละคร", true)
+    );
+    return;
+  }
+
+  if (interaction.customId === SELECT_IDS.nameClassClass) {
+    await interaction.showModal(
+      nameModal(
+        `${MODAL_PREFIX.nameClass}|${chosen}`,
+        "Change Name/Class / แก้ไขชื่อหรืออาชีพ",
+        "New Character Name (optional) / ชื่อใหม่",
+        false
+      )
+    );
+    return;
+  }
+}
+
 export async function handlePanelModalSubmit(
   interaction: ModalSubmitInteraction,
   service: MemberService,
   classService: ClassService
 ): Promise<void> {
-  if (interaction.customId === MODAL_IDS.register) {
+  const [prefix, chosenClass] = interaction.customId.split("|");
+
+  if (prefix === MODAL_PREFIX.register) {
     await interaction.deferReply({ ephemeral: true });
     const discordId = interaction.user.id;
-    const characterName = interaction.fields.getTextInputValue(FIELD_IDS.registerName);
-    const className = interaction.fields.getTextInputValue(FIELD_IDS.registerClass);
+    const characterName = interaction.fields.getTextInputValue(FIELD_IDS.characterName);
 
     try {
       const result = await service.register({
         discordId,
         discordUsername: interaction.user.username,
         characterName,
-        className,
+        className: chosenClass,
       });
       const display = await classService.formatPlayerDisplay(result.member);
       const lines = [
@@ -168,17 +202,17 @@ export async function handlePanelModalSubmit(
     return;
   }
 
-  if (interaction.customId === MODAL_IDS.nameClass) {
+  if (prefix === MODAL_PREFIX.nameClass) {
     await interaction.deferReply({ ephemeral: true });
     const discordId = interaction.user.id;
-    const newName = interaction.fields.getTextInputValue(FIELD_IDS.newName).trim();
-    const newClass = interaction.fields.getTextInputValue(FIELD_IDS.newClass).trim();
+    const newName = interaction.fields.getTextInputValue(FIELD_IDS.characterName).trim();
+    const newClass = chosenClass === SKIP_CLASS ? undefined : chosenClass;
 
     try {
       const result = await service.updateNameAndClass({
         targetDiscordId: discordId,
         newName: newName || undefined,
-        newClass: newClass || undefined,
+        newClass,
         changedByDiscordId: discordId,
       });
 

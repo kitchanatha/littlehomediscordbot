@@ -1,7 +1,7 @@
 import { Events, MessageFlags } from "discord.js";
 import { handleAssign } from "./commands/assign.js";
 import { handleHelp } from "./commands/help.js";
-import { handlePanelButton, handlePanelModalSubmit } from "./discord/member-panel.js";
+import { handlePanelButton, handlePanelModalSubmit, handlePanelSelectMenu } from "./discord/member-panel.js";
 import { handleClass } from "./commands/class.js";
 import { handleHistory } from "./commands/history.js";
 import { handleName } from "./commands/name.js";
@@ -227,9 +227,18 @@ discordClient.on(Events.InteractionCreate, async (interaction) => {
 
   if (interaction.isButton()) {
     try {
-      await handlePanelButton(interaction, queueService);
+      await handlePanelButton(interaction, queueService, classService);
     } catch (error) {
       console.error("ERROR Panel button failed", error);
+    }
+    return;
+  }
+
+  if (interaction.isStringSelectMenu()) {
+    try {
+      await handlePanelSelectMenu(interaction);
+    } catch (error) {
+      console.error("ERROR Panel select menu failed", error);
     }
     return;
   }
