@@ -13,6 +13,13 @@ import type { AttendanceService } from "./attendance-service.js";
 export class UserError extends Error {}
 
 export class MemberService {
+  // Serializes memberId generation: generateNextId reads-then-computes-then-writes, which is
+  // not atomic — two registrations landing close together could both read the same "current
+  // max" and generate the same next ID before either write completes. Confirmed live: two
+  // real concurrent registrations both got assigned "M000036". A single fixed lock key is
+  // correct here (not per-user) since uniqueness must hold across ALL registrations.
+  private registerLock: Promise<void> = Promise.resolve();
+
   constructor(
     private readonly repository: MemberRepository,
     private readonly classService: ClassService,
@@ -20,6 +27,12 @@ export class MemberService {
     private readonly queueService?: QueueService,
     private readonly attendanceService?: AttendanceService
   ) {}
+
+  private async withRegisterLock<T>(fn: () => Promise<T>): Promise<T> {
+    const resultPromise = this.registerLock.then(fn);
+    this.registerLock = resultPromise.then(() => {}).catch(() => {});
+    return resultPromise;
+  }
 
   private now(): string {
     return new Date().toISOString();
@@ -42,33 +55,36 @@ export class MemberService {
       throw new UserError("❌ Invalid class. Please select an active class.\n❌ อาชีพไม่ถูกต้อง กรุณาเลือกอาชีพจากรายการ");
     }
 
-    const existingIds = await this.repository.getAllMemberIds();
-    const memberId = generateNextId("M", existingIds);
+    const member = await this.withRegisterLock(async () => {
+      const existingIds = await this.repository.getAllMemberIds();
+      const memberId = generateNextId("M", existingIds);
 
-    const now = this.now();
-    const member: Member = {
-      memberId,
-      discordId: input.discordId,
-      discordUsername: input.discordUsername,
-      characterName: input.characterName.trim(),
-      className: canonical,
-      team: "",
-      party: "",
-      status: "Active",
-      joinedDate: now,
-      lastUpdated: now,
-    };
+      const now = this.now();
+      const newMember: Member = {
+        memberId,
+        discordId: input.discordId,
+        discordUsername: input.discordUsername,
+        characterName: input.characterName.trim(),
+        className: canonical,
+        team: "",
+        party: "",
+        status: "Active",
+        joinedDate: now,
+        lastUpdated: now,
+      };
 
-    await this.repository.createMember(member);
+      await this.repository.createMember(newMember);
+      return newMember;
+    });
 
     // Best-effort carryover from the transcribed in-game roster (see
     // Game_Roster_CombatPower) — this data source is optional, so a failure here shouldn't
     // fail the registration itself.
     try {
       const combatPower = await this.repository.findGameRosterCombatPower(member.characterName);
-      if (combatPower) await this.repository.setCombatPower(memberId, combatPower);
+      if (combatPower) await this.repository.setCombatPower(member.memberId, combatPower);
     } catch (err) {
-      console.error(`WARN Failed to carry over combat power for ${memberId}`, err);
+      console.error(`WARN Failed to carry over combat power for ${member.memberId}`, err);
     }
 
     // Best-effort: replay any War check-ins recorded while this Discord user was still
@@ -78,7 +94,7 @@ export class MemberService {
         const count = await this.attendanceService.reconcilePendingAttendance(input.discordId, member.characterName, member.className);
         if (count > 0) console.log(`INFO Backfilled ${count} pending attendance record(s) for ${member.characterName}`);
       } catch (err) {
-        console.error(`WARN Failed to reconcile pending attendance for ${memberId}`, err);
+        console.error(`WARN Failed to reconcile pending attendance for ${member.memberId}`, err);
       }
     }
 

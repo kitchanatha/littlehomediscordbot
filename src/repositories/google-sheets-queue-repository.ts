@@ -9,8 +9,7 @@ const SHEETS = {
   queueEntries: "Queue_Entries",
   queueHistory: "Queue_History",
   // Two separate sheets, matching how the guild actually tracks these (not one combined sheet).
-  // คิวการ์ดประดับ is the guild's existing Card queue sheet, kept as-is; คิวประดับ is new for Accessory.
-  cardQueueDisplay: "คิวการ์ดประดับ",
+  cardQueueDisplay: "คิวการ์ด",
   accessoryQueueDisplay: "คิวประดับ",
 } as const;
 
@@ -264,6 +263,19 @@ export class GoogleSheetsQueueRepository implements QueueRepository {
 
     const clearEndRow = Math.min(QUEUE_DISPLAY_MAX_ROWS, this.sheetRowCounts.get(sheetName)!);
 
+    // Officers sometimes leave a memo in column B next to a queued name. Rows shift up
+    // whenever someone joins/leaves, so a memo left in place by row index would end up
+    // attached to the wrong person — read the current name->memo pairing before clearing so
+    // it can follow the same person to their new row. A name with no match in the new queue
+    // (i.e. they left) simply drops out here, which is what deletes their memo.
+    const existing = await this.values(`${sheetName}!A2:B${clearEndRow}`);
+    const memoByName = new Map<string, string>();
+    for (const row of existing) {
+      const name = (row[0] ?? "").trim();
+      const memo = (row[1] ?? "").trim();
+      if (name && memo) memoByName.set(name, memo);
+    }
+
     const requests: sheets_v4.Schema$Request[] = [
       {
         // Clear both value AND background color — otherwise a class color from a previous,
@@ -271,6 +283,14 @@ export class GoogleSheetsQueueRepository implements QueueRepository {
         updateCells: {
           range: { sheetId, startRowIndex: 1, endRowIndex: clearEndRow, startColumnIndex: 0, endColumnIndex: 1 },
           fields: "userEnteredValue,userEnteredFormat.backgroundColor",
+        },
+      },
+      // Clear the officer-memo column too (value only — leave any manual formatting alone).
+      // Carried-forward memos are rewritten below for whoever is still in the queue.
+      {
+        updateCells: {
+          range: { sheetId, startRowIndex: 1, endRowIndex: clearEndRow, startColumnIndex: 1, endColumnIndex: 2 },
+          fields: "userEnteredValue",
         },
       },
       // Header row: bold text on a light gray background, frozen so it stays visible on scroll.
@@ -318,6 +338,17 @@ export class GoogleSheetsQueueRepository implements QueueRepository {
           fields: color ? "userEnteredValue,userEnteredFormat.backgroundColor" : "userEnteredValue",
         },
       });
+
+      const memo = memoByName.get(entry.text.trim());
+      if (memo) {
+        requests.push({
+          updateCells: {
+            range: { sheetId, startRowIndex: rowIndex, endRowIndex: rowIndex + 1, startColumnIndex: 1, endColumnIndex: 2 },
+            rows: [{ values: [this.stringCell(memo)] }],
+            fields: "userEnteredValue",
+          },
+        });
+      }
     });
 
     await this.sheets.spreadsheets.batchUpdate({

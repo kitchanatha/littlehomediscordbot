@@ -45,6 +45,8 @@ export const PANEL_BUTTON_IDS = {
   queueCard: "panel_queue_card",
   queueAccessory: "panel_queue_accessory",
   queueLeave: "panel_queue_leave",
+  queueLeaveCard: "panel_queue_leave_card",
+  queueLeaveAccessory: "panel_queue_leave_accessory",
   warCheckin: "panel_war_checkin",
   warLeave: "panel_war_leave",
   warLeaveConfirm: "panel_war_leave_confirm",
@@ -53,6 +55,7 @@ export const PANEL_BUTTON_IDS = {
 } as const;
 
 const WAR_CHECKIN_CHANNEL_ID = "1545473984928424036"; // 📌เช็คอิน
+const QUEUE_CHANNEL_ID = "1547631556527398932"; // 💎จองคิวประมูล
 
 function formatAnnounceDate(at: Date): string {
   return `${at.getDate()}/${at.getMonth() + 1}/${at.getFullYear()}`;
@@ -81,8 +84,6 @@ export function buildMemberPanelMessage() {
       [
         "**Register** — first-time registration / ลงทะเบียนครั้งแรก",
         "**Change Name/Class** — update your existing profile / แก้ไขชื่อหรืออาชีพของคุณ",
-        "**Card Queue** / **Accessory Queue** — join that queue directly / เข้าคิวการ์ดหรือคิวประดับโดยตรง",
-        "**ได้รับของประมูลแล้ว** — leave the queue once you've received your item / ออกจากคิวเมื่อได้รับของแล้ว",
         "**War Check-in** — mark yourself present for today's War / เช็คอินวอร์วันนี้ด้วยตัวเอง",
         "**War Leave** — let the guild know you can't make today's War / แจ้งลาวอร์วันนี้",
         "**ประมูลของ** — open the item auction site / เปิดเว็บประมูลไอเทม",
@@ -91,10 +92,7 @@ export function buildMemberPanelMessage() {
 
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.register).setLabel("Register").setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.nameClass).setLabel("Change Name/Class").setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.queueCard).setLabel("เข้าคิวการ์ด").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.queueAccessory).setLabel("เข้าคิวประดับ").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.queueLeave).setLabel("🎁 ได้รับของประมูลแล้ว").setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.nameClass).setLabel("Change Name/Class").setStyle(ButtonStyle.Primary)
   );
   const row2 = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.warCheckin).setLabel("✅ War Check-in").setStyle(ButtonStyle.Success),
@@ -117,8 +115,8 @@ export function buildWarCheckinOnlyMessage() {
       ].join("\n")
     );
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.warCheckin).setLabel("✅ War Check-in").setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.warSummary).setLabel("📊 สรุปวอ").setStyle(ButtonStyle.Primary)
+    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.warCheckin).setLabel("✅ เข้าร่วมวอร์").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.warSummary).setLabel("📊 สรุปวอร์").setStyle(ButtonStyle.Primary)
   );
   return { embeds: [embed], components: [row] };
 }
@@ -129,7 +127,7 @@ export function buildWarLeaveOnlyMessage() {
     .setColor(0xed4245)
     .setDescription("Click below to let the guild know you can't make today's War.\nคลิกด้านล่างเพื่อแจ้งลาวอร์วันนี้");
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.warLeave).setLabel("😷 War Leave").setStyle(ButtonStyle.Danger)
+    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.warLeave).setLabel("😷 ลาวอ").setStyle(ButtonStyle.Danger)
   );
   return { embeds: [embed], components: [row] };
 }
@@ -140,7 +138,7 @@ export function buildRegisterOnlyMessage() {
     .setColor(0x57f287)
     .setDescription("Click below to register your character for the first time.\nคลิกด้านล่างเพื่อลงทะเบียนครั้งแรก");
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.register).setLabel("Register").setStyle(ButtonStyle.Success)
+    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.register).setLabel("ลงทะเบียน/Register").setStyle(ButtonStyle.Success)
   );
   return { embeds: [embed], components: [row] };
 }
@@ -151,7 +149,7 @@ export function buildNameClassOnlyMessage() {
     .setColor(0x5865f2)
     .setDescription("Click below to update your character name and/or class.\nคลิกด้านล่างเพื่อแก้ไขชื่อหรืออาชีพของคุณ");
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.nameClass).setLabel("Change Name/Class").setStyle(ButtonStyle.Primary)
+    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.nameClass).setLabel("เปลี่ยน ชื่อ/อาชีพ").setStyle(ButtonStyle.Primary)
   );
   return { embeds: [embed], components: [row] };
 }
@@ -183,32 +181,6 @@ export function buildAuctionOnlyMessage() {
     new ButtonBuilder().setLabel("🔨 ประมูลของ").setStyle(ButtonStyle.Link).setURL("https://kitchanatha.github.io/guild-item-reservation/")
   );
   return { embeds: [embed], components: [row] };
-}
-
-// Combines the auction link and queue buttons into one message — used for the sticky panel in
-// the auction channel, since two separate stickies in the same channel would keep leapfrogging
-// each other's "most recent" spot every time either one reposts.
-export function buildAuctionAndQueueMessage() {
-  const embed = new EmbedBuilder()
-    .setTitle("🔨 ประมูลของ / Item Auction")
-    .setColor(0xfee75c)
-    .setDescription(
-      [
-        "Click below to open the item auction site.\nคลิกด้านล่างเพื่อเปิดเว็บประมูลไอเทม",
-        "",
-        "**Card Queue** / **Accessory Queue** — join that queue / เข้าคิวการ์ดหรือคิวประดับ",
-        "**ได้รับของประมูลแล้ว** — leave the queue once you've received your item / ออกจากคิวเมื่อได้รับของแล้ว",
-      ].join("\n")
-    );
-  const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setLabel("🔨 ประมูลของ").setStyle(ButtonStyle.Link).setURL("https://kitchanatha.github.io/guild-item-reservation/")
-  );
-  const row2 = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.queueCard).setLabel("เข้าคิวการ์ด").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.queueAccessory).setLabel("เข้าคิวประดับ").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.queueLeave).setLabel("🎁 ได้รับของประมูลแล้ว").setStyle(ButtonStyle.Success)
-  );
-  return { embeds: [embed], components: [row1, row2] };
 }
 
 function nameModal(customId: string, title: string, label: string, required: boolean): ModalBuilder {
@@ -261,10 +233,15 @@ export async function handlePanelButton(
     case PANEL_BUTTON_IDS.queueAccessory: {
       await interaction.deferReply({ ephemeral: true });
       const queueType = interaction.customId === PANEL_BUTTON_IDS.queueCard ? "Card" : "Accessory";
+      const queueLabel = queueType === "Card" ? "การ์ด" : "ประดับ";
       const discordId = interaction.user.id;
       try {
         const entry = await queueService.enqueue({ targetDiscordId: discordId, queueType, changedByDiscordId: discordId });
         await interaction.editReply(`✅ Joined ${queueType} queue.\nPosition: #${entry.position}`);
+        const member = await queueService.getMemberByDiscordId(discordId);
+        if (member) {
+          await postAnnouncement(interaction.client, QUEUE_CHANNEL_ID, `${member.characterName} ได้เข้าคิว${queueLabel}แล้ว`);
+        }
       } catch (error) {
         if (error instanceof UserError) {
           await interaction.editReply(error.message);
@@ -279,12 +256,38 @@ export async function handlePanelButton(
       await interaction.deferReply({ ephemeral: true });
       const discordId = interaction.user.id;
       try {
-        const left = await queueService.leaveAllActiveQueues(discordId, discordId);
-        if (left.length === 0) {
+        const status = await queueService.getMemberQueueStatus(discordId);
+        const inCard = status.card?.position !== undefined;
+        const inAccessory = status.accessory?.position !== undefined;
+
+        if (!inCard && !inAccessory) {
           await interaction.editReply("ℹ️ You're not currently in any queue.\nℹ️ คุณไม่ได้อยู่ในคิวใดๆ อยู่");
-        } else {
-          await interaction.editReply(
-            `✅ Left the ${left.join(" and ")} queue${left.length > 1 ? "s" : ""}. Enjoy your item!\n✅ ออกจากคิว${left.join("และ")}แล้ว ยินดีด้วยนะ!`
+          return;
+        }
+
+        if (inCard && inAccessory) {
+          const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.queueLeaveCard).setLabel("🎴 คิวการ์ด").setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.queueLeaveAccessory).setLabel("💍 คิวประดับ").setStyle(ButtonStyle.Secondary)
+          );
+          await interaction.editReply({
+            content: "You're in both queues — which one did you receive an item from?\nคุณอยู่ในทั้งสองคิว ได้รับของจากคิวไหน?",
+            components: [row],
+          });
+          return;
+        }
+
+        const queueType = inCard ? "Card" : "Accessory";
+        const queueLabel = inCard ? "การ์ด" : "ประดับ";
+        const { cooldownUntil } = await queueService.dequeue({ targetDiscordId: discordId, queueType, changedByDiscordId: discordId });
+        await interaction.editReply(`✅ Left the ${queueType} queue. Enjoy your item!\n✅ ออกจากคิว${queueLabel}แล้ว ยินดีด้วยนะ!`);
+        const member = await queueService.getMemberByDiscordId(discordId);
+        if (member) {
+          const cooldownDate = formatAnnounceDate(new Date(cooldownUntil));
+          await postAnnouncement(
+            interaction.client,
+            QUEUE_CHANNEL_ID,
+            `${member.characterName} ได้รับ ${queueLabel} แล้ว จะสามารถเข้าคิวได้อีกที ${cooldownDate}`
           );
         }
       } catch (error) {
@@ -293,6 +296,40 @@ export async function handlePanelButton(
         } else {
           console.error("ERROR Panel queue leave failed", error);
           await interaction.editReply("❌ Something went wrong. Please try again later.\n❌ เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง");
+        }
+      }
+      return;
+    }
+    case PANEL_BUTTON_IDS.queueLeaveCard:
+    case PANEL_BUTTON_IDS.queueLeaveAccessory: {
+      await interaction.deferUpdate();
+      const discordId = interaction.user.id;
+      const queueType = interaction.customId === PANEL_BUTTON_IDS.queueLeaveCard ? "Card" : "Accessory";
+      const queueLabel = queueType === "Card" ? "การ์ด" : "ประดับ";
+      try {
+        const { cooldownUntil } = await queueService.dequeue({ targetDiscordId: discordId, queueType, changedByDiscordId: discordId });
+        await interaction.editReply({
+          content: `✅ Left the ${queueType} queue. Enjoy your item!\n✅ ออกจากคิว${queueLabel}แล้ว ยินดีด้วยนะ!`,
+          components: [],
+        });
+        const member = await queueService.getMemberByDiscordId(discordId);
+        if (member) {
+          const cooldownDate = formatAnnounceDate(new Date(cooldownUntil));
+          await postAnnouncement(
+            interaction.client,
+            QUEUE_CHANNEL_ID,
+            `${member.characterName} ได้รับ ${queueLabel} แล้ว จะสามารถเข้าคิวได้อีกที ${cooldownDate}`
+          );
+        }
+      } catch (error) {
+        if (error instanceof UserError) {
+          await interaction.editReply({ content: error.message, components: [] });
+        } else {
+          console.error("ERROR Panel queue leave choice failed", error);
+          await interaction.editReply({
+            content: "❌ Something went wrong. Please try again later.\n❌ เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง",
+            components: [],
+          });
         }
       }
       return;

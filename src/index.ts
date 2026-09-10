@@ -10,7 +10,8 @@ import {
   buildNameClassOnlyMessage,
   buildWarCheckinOnlyMessage,
   buildWarLeaveOnlyMessage,
-  buildAuctionAndQueueMessage,
+  buildAuctionOnlyMessage,
+  buildQueueOnlyMessage,
 } from "./discord/member-panel.js";
 import { registerStickyPanels, initStickyPanels, type StickyPanelConfig } from "./discord/sticky-panels.js";
 import { handleClass } from "./commands/class.js";
@@ -80,7 +81,8 @@ const STICKY_PANELS: StickyPanelConfig[] = [
   { channelId: env.WAR_LEAVE_CHANNEL_ID, build: buildWarLeaveOnlyMessage },
   { channelId: env.AUTO_REGISTER_CHANNEL_ID, build: buildRegisterOnlyMessage },
   { channelId: env.NAME_CLASS_CHANGE_CHANNEL_ID, build: buildNameClassOnlyMessage },
-  { channelId: "1534222703073034400", build: buildAuctionAndQueueMessage }, // 💸ห้องประมูล💸
+  { channelId: "1534222703073034400", build: buildAuctionOnlyMessage }, // 💸ห้องประมูล💸
+  { channelId: "1547631556527398932", build: buildQueueOnlyMessage }, // 💎จองคิวประมูล
 ].filter((c) => c.channelId);
 
 registerStickyPanels(discordClient, STICKY_PANELS);
