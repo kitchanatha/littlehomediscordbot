@@ -4,6 +4,7 @@ import {
   ButtonInteraction,
   ButtonStyle,
   EmbedBuilder,
+  GuildMemberRoleManager,
   ModalBuilder,
   ModalSubmitInteraction,
   StringSelectMenuBuilder,
@@ -15,6 +16,15 @@ import { MemberService, UserError } from "../services/member-service.js";
 import type { AttendanceService } from "../services/attendance-service.js";
 import type { ClassService } from "../services/class-service.js";
 import type { QueueService } from "../services/queue-service.js";
+import { env } from "../config/env.js";
+import { postAnnouncement, postAnnouncements, chunkMessage } from "./sticky-panels.js";
+
+function isAdminInteraction(interaction: ButtonInteraction): boolean {
+  const roles = interaction.member?.roles;
+  return roles instanceof GuildMemberRoleManager
+    ? env.ASSIGN_ROLE_IDS.some((roleId) => roles.cache.has(roleId))
+    : Array.isArray(roles) && env.ASSIGN_ROLE_IDS.some((roleId) => roles.includes(roleId));
+}
 
 // Persistent button panel posted once into a channel (see src/scripts/post-member-panel.ts) so
 // members can register, update their profile, and join a queue without typing a slash command.
@@ -37,7 +47,16 @@ export const PANEL_BUTTON_IDS = {
   queueLeave: "panel_queue_leave",
   warCheckin: "panel_war_checkin",
   warLeave: "panel_war_leave",
+  warLeaveConfirm: "panel_war_leave_confirm",
+  warLeaveCancel: "panel_war_leave_cancel",
+  warSummary: "panel_war_summary",
 } as const;
+
+const WAR_CHECKIN_CHANNEL_ID = "1545473984928424036"; // 📌เช็คอิน
+
+function formatAnnounceDate(at: Date): string {
+  return `${at.getDate()}/${at.getMonth() + 1}/${at.getFullYear()}`;
+}
 
 const SELECT_IDS = {
   registerClass: "panel_select_register_class",
@@ -90,9 +109,16 @@ export function buildWarCheckinOnlyMessage() {
   const embed = new EmbedBuilder()
     .setTitle("✅ War Check-in / เช็คอินวอร์")
     .setColor(0x57f287)
-    .setDescription("Click below to mark yourself present for today's War.\nคลิกด้านล่างเพื่อเช็คอินวอร์วันนี้");
+    .setDescription(
+      [
+        "Click below to mark yourself present for today's War.\nคลิกด้านล่างเพื่อเช็คอินวอร์วันนี้",
+        "",
+        "**สรุปวอ** — Admin/Guild Leader only: posts a summary of who has and hasn't checked in.",
+      ].join("\n")
+    );
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.warCheckin).setLabel("✅ War Check-in").setStyle(ButtonStyle.Success)
+    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.warCheckin).setLabel("✅ War Check-in").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.warSummary).setLabel("📊 สรุปวอ").setStyle(ButtonStyle.Primary)
   );
   return { embeds: [embed], components: [row] };
 }
@@ -157,6 +183,32 @@ export function buildAuctionOnlyMessage() {
     new ButtonBuilder().setLabel("🔨 ประมูลของ").setStyle(ButtonStyle.Link).setURL("https://kitchanatha.github.io/guild-item-reservation/")
   );
   return { embeds: [embed], components: [row] };
+}
+
+// Combines the auction link and queue buttons into one message — used for the sticky panel in
+// the auction channel, since two separate stickies in the same channel would keep leapfrogging
+// each other's "most recent" spot every time either one reposts.
+export function buildAuctionAndQueueMessage() {
+  const embed = new EmbedBuilder()
+    .setTitle("🔨 ประมูลของ / Item Auction")
+    .setColor(0xfee75c)
+    .setDescription(
+      [
+        "Click below to open the item auction site.\nคลิกด้านล่างเพื่อเปิดเว็บประมูลไอเทม",
+        "",
+        "**Card Queue** / **Accessory Queue** — join that queue / เข้าคิวการ์ดหรือคิวประดับ",
+        "**ได้รับของประมูลแล้ว** — leave the queue once you've received your item / ออกจากคิวเมื่อได้รับของแล้ว",
+      ].join("\n")
+    );
+  const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setLabel("🔨 ประมูลของ").setStyle(ButtonStyle.Link).setURL("https://kitchanatha.github.io/guild-item-reservation/")
+  );
+  const row2 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.queueCard).setLabel("เข้าคิวการ์ด").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.queueAccessory).setLabel("เข้าคิวประดับ").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.queueLeave).setLabel("🎁 ได้รับของประมูลแล้ว").setStyle(ButtonStyle.Success)
+  );
+  return { embeds: [embed], components: [row1, row2] };
 }
 
 function nameModal(customId: string, title: string, label: string, required: boolean): ModalBuilder {
@@ -263,19 +315,71 @@ export async function handlePanelButton(
       return;
     }
     case PANEL_BUTTON_IDS.warLeave: {
-      await interaction.deferReply({ ephemeral: true });
+      const confirmRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.warLeaveConfirm).setLabel("✅ Confirm").setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.warLeaveCancel).setLabel("Cancel").setStyle(ButtonStyle.Secondary)
+      );
+      await interaction.reply({
+        content:
+          "⚠️ Are you sure you want to mark yourself absent for today's War?\n⚠️ ยืนยันว่าต้องการแจ้งลาวอร์วันนี้ใช่หรือไม่?",
+        components: [confirmRow],
+        ephemeral: true,
+      });
+      return;
+    }
+    case PANEL_BUTTON_IDS.warLeaveCancel: {
+      await interaction.update({ content: "❌ Cancelled. / ยกเลิกแล้ว", components: [] });
+      return;
+    }
+    case PANEL_BUTTON_IDS.warLeaveConfirm: {
+      await interaction.deferUpdate();
       try {
         const result = await attendanceService.requestLeave(interaction.user.id);
-        await interaction.editReply(
-          `✅ Leave recorded for **${result.characterName}** (${result.dateLabel}).\n✅ บันทึกการลาสำหรับ **${result.characterName}** แล้ว (${result.dateLabel})`
-        );
+        await interaction.editReply({
+          content: `✅ Leave recorded for **${result.characterName}** (${result.dateLabel}).\n✅ บันทึกการลาสำหรับ **${result.characterName}** แล้ว (${result.dateLabel})`,
+          components: [],
+        });
+        if (env.WAR_LEAVE_CHANNEL_ID) {
+          await postAnnouncement(
+            interaction.client,
+            env.WAR_LEAVE_CHANNEL_ID,
+            `${result.characterName} ลาวอวันที่ ${formatAnnounceDate(new Date())}`
+          ).catch((err) => console.error("ERROR Failed to post war leave announcement", err));
+        }
       } catch (error) {
         if (error instanceof UserError) {
-          await interaction.editReply(error.message);
+          await interaction.editReply({ content: error.message, components: [] });
         } else {
           console.error("ERROR Panel war leave failed", error);
-          await interaction.editReply("❌ Something went wrong. Please try again later.\n❌ เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง");
+          await interaction.editReply({
+            content: "❌ Something went wrong. Please try again later.\n❌ เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง",
+            components: [],
+          });
         }
+      }
+      return;
+    }
+    case PANEL_BUTTON_IDS.warSummary: {
+      if (!isAdminInteraction(interaction)) {
+        await interaction.reply({ content: "❌ You don't have permission to use this.\n❌ คุณไม่มีสิทธิ์ใช้ปุ่มนี้", ephemeral: true });
+        return;
+      }
+      await interaction.deferReply({ ephemeral: true });
+      try {
+        const summary = await attendanceService.getWarSummary();
+        const lines = [
+          `สมาชิกที่มาวอ ${summary.presentCount} คน และ สมาชิกที่ขาดวอ ${summary.missingCount} คน`,
+          "",
+          "รายชื่อสมาชิกที่ขาดวอ",
+          summary.missingNames.length > 0 ? summary.missingNames.join(", ") : "- ไม่มี -",
+        ];
+        await interaction.editReply("✅ Posted the summary.");
+        await postAnnouncements(interaction.client, WAR_CHECKIN_CHANNEL_ID, chunkMessage(lines.join("\n"))).catch((err) =>
+          console.error("ERROR Failed to post war summary announcement", err)
+        );
+      } catch (error) {
+        console.error("ERROR Panel war summary failed", error);
+        await interaction.editReply("❌ Something went wrong. Please try again later.\n❌ เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง");
       }
       return;
     }
@@ -334,6 +438,14 @@ export async function handlePanelModalSubmit(
       ];
       await interaction.editReply(lines.join("\n"));
       console.log(`INFO Member registered via panel: ${discordId}`);
+
+      if (env.AUTO_REGISTER_CHANNEL_ID) {
+        await postAnnouncement(
+          interaction.client,
+          env.AUTO_REGISTER_CHANNEL_ID,
+          `${result.member.characterName} : ${result.member.className} ได้ลงทะเบียนเรียบร้อยแล้ว`
+        ).catch((err) => console.error("ERROR Failed to post registration announcement", err));
+      }
     } catch (error) {
       if (error instanceof UserError) {
         await interaction.editReply(error.message);
@@ -352,6 +464,7 @@ export async function handlePanelModalSubmit(
     const newClass = chosenClass === SKIP_CLASS ? undefined : chosenClass;
 
     try {
+      const before = await service.profile(discordId).catch(() => null);
       const result = await service.updateNameAndClass({
         targetDiscordId: discordId,
         newName: newName || undefined,
@@ -378,6 +491,17 @@ export async function handlePanelModalSubmit(
       }
       await interaction.editReply(messages.join("\n\n"));
       console.log(`INFO Profile updated via panel for ${discordId}`);
+
+      if (env.NAME_CLASS_CHANGE_CHANNEL_ID && before) {
+        const parts: string[] = [];
+        if (result.nameChanged) parts.push(`เปลี่ยนชื่อเป็น ${result.member.characterName}`);
+        if (result.classChanged) parts.push(`เปลี่ยนอาชีพเป็น ${result.member.className}`);
+        await postAnnouncement(
+          interaction.client,
+          env.NAME_CLASS_CHANGE_CHANNEL_ID,
+          `${before.characterName} ${parts.join(" และ ")}`
+        ).catch((err) => console.error("ERROR Failed to post name/class change announcement", err));
+      }
     } catch (error) {
       if (error instanceof UserError) {
         await interaction.editReply(error.message);

@@ -25,6 +25,13 @@ const SHEETS = {
 const GAME_ROSTER_SHEET = "Members";
 // Plain two-column (CharacterName, War Check-in) display tab kept in sync alongside Members.
 const DISPLAY_SHEET = "Little Home member";
+// War-planning grid (Team A-D x party columns) — typed character names, autocompleted and
+// colored by class via native Sheets data validation/conditional formatting (see
+// src/scripts/*jadti* history). Class changes and leaving the guild already reflect live via
+// that formatting; only a rename needs the bot's help, since Sheets can't rewrite arbitrary
+// already-typed cell text on its own.
+const JADTI_SHEET = "จัดตี้";
+const JADTI_RANGE = "A1:H50";
 const MEMBERS_COMBAT_POWER_COL = "K";
 const MEMBERS_COMBAT_POWER_COL_INDEX0 = 10; // K is the 11th column, 0-indexed 10
 
@@ -195,6 +202,32 @@ export class GoogleSheetsMemberRepository implements MemberRepository {
     }
   }
 
+  // Scans the whole จัดตี้ war-planning grid for cells still holding the old name (an admin may
+  // have typed it into any team block) and rewrites them — a rename doesn't otherwise propagate
+  // there since those are plain typed cells, not formulas.
+  private async renameInJadti(oldName: string, newName: string): Promise<void> {
+    try {
+      const rows = await this.values(`${JADTI_SHEET}!${JADTI_RANGE}`);
+      const target = normalizeName(oldName);
+      const updates: { range: string; values: string[][] }[] = [];
+      rows.forEach((row, r) => {
+        row.forEach((cell, c) => {
+          if (cell && normalizeName(cell) === target) {
+            const colLetter = String.fromCharCode(65 + c);
+            updates.push({ range: `${JADTI_SHEET}!${colLetter}${r + 1}`, values: [[newName]] });
+          }
+        });
+      });
+      if (updates.length === 0) return;
+      await this.sheets.spreadsheets.values.batchUpdate({
+        spreadsheetId: this.spreadsheetId,
+        requestBody: { valueInputOption: "RAW", data: updates },
+      });
+    } catch (err) {
+      console.error(`WARN Failed to rename "${oldName}" -> "${newName}" on "${JADTI_SHEET}" tab`, err);
+    }
+  }
+
   private async colorDisplaySheetRow(characterName: string, className: string): Promise<void> {
     const color = await this.classColorRgb(className);
     if (!color) return;
@@ -265,78 +298,6 @@ export class GoogleSheetsMemberRepository implements MemberRepository {
     const index = rows.findIndex((r) => r[1] === discordId);
     if (index < 0) throw new Error("Member row not found");
     return index + 1; // zero-based API row index; row 2 => index 1
-  }
-
-  private async atomicMemberChange(
-    member: Member,
-    columnIndex: number,
-    newValue: string,
-    historySheet: string,
-    history: HistoryEntry,
-  ): Promise<void> {
-    await this.ensureSheetIds();
-    const membersSheetId = this.sheetIds.get(SHEETS.members);
-    const historySheetId = this.sheetIds.get(historySheet);
-    if (membersSheetId === undefined || historySheetId === undefined) throw new Error("Required sheet missing");
-
-    const rowIndex = await this.findMemberRow(member.discordId);
-    const historyValues = history.type === "name"
-      ? [history.historyId, history.memberId, history.discordId, history.oldValue, history.newValue, history.changedAt, history.changedBy]
-      : [history.historyId, history.memberId, history.discordId, history.oldValue, history.newValue, history.changedAt, history.changedBy];
-
-    await this.sheets.spreadsheets.batchUpdate({
-      spreadsheetId: this.spreadsheetId,
-      requestBody: {
-        requests: [
-          {
-            updateCells: {
-              range: {
-                sheetId: membersSheetId,
-                startRowIndex: rowIndex,
-                endRowIndex: rowIndex + 1,
-                startColumnIndex: columnIndex,
-                endColumnIndex: columnIndex + 1,
-              },
-              rows: [{ values: [this.stringCell(newValue)] }],
-              fields: "userEnteredValue",
-            },
-          },
-          {
-            updateCells: {
-              range: {
-                sheetId: membersSheetId,
-                startRowIndex: rowIndex,
-                endRowIndex: rowIndex + 1,
-                startColumnIndex: 9,
-                endColumnIndex: 10,
-              },
-              rows: [{ values: [this.stringCell(history.changedAt)] }],
-              fields: "userEnteredValue",
-            },
-          },
-          {
-            appendCells: {
-              sheetId: historySheetId,
-              rows: [{ values: historyValues.map((v) => this.stringCell(v)) }],
-              fields: "userEnteredValue",
-            },
-          },
-        ],
-      },
-    });
-  }
-
-  async updateName(member: Member, newName: string, history: HistoryEntry): Promise<Member> {
-    await this.atomicMemberChange(member, 3, newName, SHEETS.nameHistory, history);
-    await this.renameInDisplaySheet(member.characterName, newName);
-    return { ...member, characterName: newName, lastUpdated: history.changedAt };
-  }
-
-  async updateClass(member: Member, newClass: string, history: HistoryEntry): Promise<Member> {
-    await this.atomicMemberChange(member, 4, newClass, SHEETS.classHistory, history);
-    await this.applyCharacterNameColor(member.discordId, newClass);
-    await this.colorDisplaySheetRow(member.characterName, newClass);
-    return { ...member, className: newClass, lastUpdated: history.changedAt };
   }
 
   async updateTeamAndParty(member: Member, updates: { team?: string; party?: string }, histories: HistoryEntry[], audit: any): Promise<Member> {
@@ -570,10 +531,21 @@ export class GoogleSheetsMemberRepository implements MemberRepository {
       requestBody: { requests },
     });
 
+    const finalClassName = updates.className ?? member.className;
+
+    if (updates.name) {
+      await this.renameInDisplaySheet(member.characterName, updates.name);
+      await this.renameInJadti(member.characterName, updates.name);
+    }
+    if (updates.className) {
+      await this.applyCharacterNameColor(member.discordId, finalClassName);
+      await this.colorDisplaySheetRow(updates.name ?? member.characterName, finalClassName);
+    }
+
     return {
       ...member,
       characterName: updates.name ?? member.characterName,
-      className: updates.className ?? member.className,
+      className: finalClassName,
       lastUpdated: now,
     };
   }
@@ -798,6 +770,34 @@ export class GoogleSheetsMemberRepository implements MemberRepository {
       spreadsheetId: this.spreadsheetId,
       requestBody: { requests },
     });
+
+    if (status === "Left") {
+      await this.removeFromDisplaySheet(member.characterName);
+    } else if (status === "Active") {
+      await this.addToDisplaySheet(member.characterName, member.className);
+    }
+  }
+
+  // Removes a member's row from "Little Home member" when they leave the guild — that tab is
+  // meant to be a clean list of current members, not a historical log (Members!Status still
+  // keeps the full "Left" record).
+  private async removeFromDisplaySheet(characterName: string): Promise<void> {
+    try {
+      await this.ensureSheetIds();
+      const sheetId = this.sheetIds.get(DISPLAY_SHEET);
+      if (sheetId === undefined) return;
+      const rows = await this.values(`${DISPLAY_SHEET}!A2:A`);
+      const idx = rows.findIndex((r) => normalizeName(r[0] ?? "") === normalizeName(characterName));
+      if (idx < 0) return;
+      await this.sheets.spreadsheets.batchUpdate({
+        spreadsheetId: this.spreadsheetId,
+        requestBody: {
+          requests: [{ deleteDimension: { range: { sheetId, dimension: "ROWS", startIndex: idx + 1, endIndex: idx + 2 } } }],
+        },
+      });
+    } catch (err) {
+      console.error(`WARN Failed to remove "${characterName}" from "${DISPLAY_SHEET}" tab`, err);
+    }
   }
 
   async getAllMembers(): Promise<Member[]> {

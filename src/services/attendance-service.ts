@@ -31,15 +31,17 @@ export class AttendanceService {
 
   async checkIn(discordId: string): Promise<{ characterName: string; dateLabel: string }> {
     const member = await this.resolveActiveMember(discordId);
-    const result = await this.attendanceRepository.markAttendance(member.characterName, member.className, "มา", new Date());
-    await this.mirrorToRoster(member.characterName, "มา", new Date());
+    const at = new Date();
+    const result = await this.attendanceRepository.markAttendance(member.characterName, member.className, "มา", at);
+    if (result.markedMaster) await this.mirrorToRoster(member.characterName, "มา", at);
     return { characterName: member.characterName, dateLabel: result.dateLabel };
   }
 
   async requestLeave(discordId: string): Promise<{ characterName: string; dateLabel: string }> {
     const member = await this.resolveActiveMember(discordId);
-    const result = await this.attendanceRepository.markAttendance(member.characterName, member.className, "แจ้งลาแล้ว", new Date());
-    await this.mirrorToRoster(member.characterName, "แจ้งลาแล้ว", new Date());
+    const at = new Date();
+    const result = await this.attendanceRepository.markAttendance(member.characterName, member.className, "แจ้งลาแล้ว", at);
+    if (result.markedMaster) await this.mirrorToRoster(member.characterName, "แจ้งลาแล้ว", at);
     return { characterName: member.characterName, dateLabel: result.dateLabel };
   }
 
@@ -68,13 +70,25 @@ export class AttendanceService {
       .sort((a, b) => a.characterName.localeCompare(b.characterName));
   }
 
+  /** Present/missing counts and names for today — backs the "สรุปวอ" War summary button. */
+  async getWarSummary(): Promise<{ presentCount: number; missingCount: number; missingNames: string[] }> {
+    const missing = await this.getMembersNeedingCheckIn();
+    const totalActive = await this.memberRepository.getAllActiveMembers();
+    return {
+      presentCount: totalActive.length - missing.length,
+      missingCount: missing.length,
+      missingNames: missing.map((m) => m.characterName),
+    };
+  }
+
   /** Checks in a specific member by ID — used by the admin check-in panel's buttons. */
   async checkInMember(memberId: string): Promise<{ characterName: string; dateLabel: string }> {
     const members = await this.memberRepository.getAllActiveMembers();
     const member = members.find((m) => m.memberId === memberId);
     if (!member) throw new UserError("❌ Member not found.");
-    const result = await this.attendanceRepository.markAttendance(member.characterName, member.className, "มา", new Date());
-    await this.mirrorToRoster(member.characterName, "มา", new Date());
+    const at = new Date();
+    const result = await this.attendanceRepository.markAttendance(member.characterName, member.className, "มา", at);
+    if (result.markedMaster) await this.mirrorToRoster(member.characterName, "มา", at);
     return { characterName: member.characterName, dateLabel: result.dateLabel };
   }
 

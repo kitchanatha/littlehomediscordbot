@@ -7,8 +7,6 @@ export interface MemberRepository {
   getActiveClasses(): Promise<string[]>;
   getClassConfigs(): Promise<ClassConfig[]>;
   createMember(member: Member): Promise<void>;
-  updateName(member: Member, newName: string, history: HistoryEntry): Promise<Member>;
-  updateClass(member: Member, newClass: string, history: HistoryEntry): Promise<Member>;
   updateTeamAndParty(member: Member, updates: { team?: string; party?: string }, histories: HistoryEntry[], audit: any): Promise<Member>;
   getHistory(memberId: string): Promise<HistoryEntry[]>;
   getAllMemberIds(): Promise<string[]>;

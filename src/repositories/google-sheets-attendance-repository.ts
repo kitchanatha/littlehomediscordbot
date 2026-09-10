@@ -180,32 +180,31 @@ export class GoogleSheetsAttendanceRepository implements AttendanceRepository {
       }
     }
 
-    // spreadsheets.values.append with insertDataOption=INSERT_ROWS has a real Google Sheets API
-    // bug: a column-restricted range (e.g. "B:B") is ignored for the actual write position, and
-    // the value silently lands in column A instead — confirmed by testing directly against the
-    // live sheet (updatedRange came back as "A165" for a "B:B" append). Appending a full-width
-    // padded row (empty cells up to nameCol, then the name) against an unrestricted range keeps
-    // Google's atomic server-side row allocation (avoiding a race between concurrent check-ins
-    // that a client-computed row number would risk) while landing the name in the right column.
-    const padded: string[] = new Array(nameCol).fill("");
-    padded.push(name);
-
-    const appendResponse = await this.sheets.spreadsheets.values.append({
+    // spreadsheets.values.append's "smart table detection" for where to anchor a new row is
+    // unreliable in BOTH directions when column A is sparse (as it is here — a manually-filled
+    // index number, not populated by the bot): a column-restricted range (e.g. "B:B") has been
+    // seen landing the value in column A instead, and — confirmed live against this exact sheet
+    // — an unrestricted "A:Z" range with a padded ["", name] array has landed the name a column
+    // further right than intended (into C instead of B), corrupting real attendance rows. Rather
+    // than trust append's column anchor at all, compute the row explicitly from columnValues
+    // (already fetched above) and write directly to the exact cell — no anchor ambiguity. This
+    // trades append's atomic server-side row allocation for a small race window between two
+    // concurrent check-ins choosing the same row; acceptable given check-ins are low-frequency,
+    // human-driven clicks, not a hot path.
+    //
+    // Row count comes from a wide read (A:Z), not columnValues above — a row with data in some
+    // other column but a blank name cell (e.g. a row corrupted by the old append-anchor bug)
+    // would otherwise under-count and cause this write to land on top of it.
+    const allRows = await this.values(`${sheetName}!A2:Z`);
+    const rowNumber = allRows.length + 2; // header is row 1, data starts at row 2
+    await this.ensureRowCapacity(sheetName, sheetId, rowNumber);
+    await this.sheets.spreadsheets.values.update({
       spreadsheetId: this.spreadsheetId,
-      range: `${sheetName}!A:Z`,
+      range: `${sheetName}!${letter}${rowNumber}`,
       valueInputOption: "RAW",
-      insertDataOption: "INSERT_ROWS",
-      requestBody: { values: [padded] },
+      requestBody: { values: [[name]] },
     });
-
-    // updatedRange is like "'Sheet'!A165:B165" (multi-column) or "'Sheet'!A165" (single column,
-    // when nameCol is 0) — take the last ":"-segment so a greedy digit match can't eat into the
-    // row number ambiguously either way.
-    const updatedRange = appendResponse.data.updates?.updatedRange ?? "";
-    const lastPart = updatedRange.split(":").pop() ?? "";
-    const rowMatch = /(\d+)$/.exec(lastPart);
-    if (!rowMatch) throw new Error(`Could not determine the row Google Sheets used for "${name}" in ${sheetName}`);
-    return parseInt(rowMatch[1], 10);
+    return rowNumber;
   }
 
   private async writeMark(
@@ -371,6 +370,14 @@ export class GoogleSheetsAttendanceRepository implements AttendanceRepository {
 
     const header = canonicalHeader(at);
     if (rows[0]?.[ROSTER_CHECKIN_COL] !== header) {
+      // New War period — clear everyone else's status first, so a stale "มา"/"แจ้งลาแล้ว" from
+      // the previous War doesn't sit there misrepresented as this new date's check-in.
+      if (rows.length > 1) {
+        await this.sheets.spreadsheets.values.clear({
+          spreadsheetId: rosterSpreadsheetId,
+          range: `${ROSTER_SHEET}!${colLetter(ROSTER_CHECKIN_COL)}2:${colLetter(ROSTER_CHECKIN_COL)}${rows.length}`,
+        });
+      }
       await this.sheets.spreadsheets.values.update({
         spreadsheetId: rosterSpreadsheetId,
         range: `${ROSTER_SHEET}!${colLetter(ROSTER_CHECKIN_COL)}1`,

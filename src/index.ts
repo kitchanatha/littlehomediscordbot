@@ -1,7 +1,18 @@
 import { Events, MessageFlags } from "discord.js";
 import { handleAssign } from "./commands/assign.js";
 import { handleHelp } from "./commands/help.js";
-import { handlePanelButton, handlePanelModalSubmit, handlePanelSelectMenu } from "./discord/member-panel.js";
+import {
+  handlePanelButton,
+  handlePanelModalSubmit,
+  handlePanelSelectMenu,
+  buildMemberPanelMessage,
+  buildRegisterOnlyMessage,
+  buildNameClassOnlyMessage,
+  buildWarCheckinOnlyMessage,
+  buildWarLeaveOnlyMessage,
+  buildAuctionAndQueueMessage,
+} from "./discord/member-panel.js";
+import { registerStickyPanels, initStickyPanels, type StickyPanelConfig } from "./discord/sticky-panels.js";
 import { handleClass } from "./commands/class.js";
 import { handleHistory } from "./commands/history.js";
 import { handleName } from "./commands/name.js";
@@ -59,8 +70,25 @@ try {
   console.error("WARN Attendance database is not ready yet — /war_checkin and /war_leave will fail until it is.", error instanceof Error ? error.message : error);
 }
 
+// Channels where a static button panel was posted and should always stay the newest message —
+// see src/discord/sticky-panels.ts. The admin check-in panel is deliberately excluded: it's
+// dynamic (rebuilds a live member list from Sheets on every render) and already has its own
+// Refresh button, so auto-reposting it on every chat message would be wasteful.
+const STICKY_PANELS: StickyPanelConfig[] = [
+  { channelId: "1534529772351127812", build: buildMemberPanelMessage }, // #test
+  { channelId: "1545473984928424036", build: buildWarCheckinOnlyMessage }, // 📌เช็คอิน
+  { channelId: env.WAR_LEAVE_CHANNEL_ID, build: buildWarLeaveOnlyMessage },
+  { channelId: env.AUTO_REGISTER_CHANNEL_ID, build: buildRegisterOnlyMessage },
+  { channelId: env.NAME_CLASS_CHANGE_CHANNEL_ID, build: buildNameClassOnlyMessage },
+  { channelId: "1534222703073034400", build: buildAuctionAndQueueMessage }, // 💸ห้องประมูล💸
+].filter((c) => c.channelId);
+
+registerStickyPanels(discordClient, STICKY_PANELS);
+
 discordClient.once(Events.ClientReady, async (readyClient) => {
   console.log(`INFO Bot ready as ${readyClient.user.tag}`);
+
+  await initStickyPanels(readyClient, STICKY_PANELS);
 
   if (env.ENABLE_MEMBERS_INTENT) {
     try {
