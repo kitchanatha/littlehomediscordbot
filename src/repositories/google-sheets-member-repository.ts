@@ -32,6 +32,10 @@ const DISPLAY_SHEET = "Little Home member";
 // already-typed cell text on its own.
 const JADTI_SHEET = "จัดตี้";
 const JADTI_RANGE = "A1:H50";
+// Elite-run team roster (Team A rows 4-8, Team B rows 13-17) — same "plain typed names, not
+// formulas" situation as จัดตี้, so it needs the same rename/leave handling.
+const ELITE_SHEET = "หน้างานอีลิท";
+const ELITE_RANGE = "A1:H50";
 const MEMBERS_COMBAT_POWER_COL = "K";
 const MEMBERS_COMBAT_POWER_COL_INDEX0 = 10; // K is the 11th column, 0-indexed 10
 
@@ -202,29 +206,36 @@ export class GoogleSheetsMemberRepository implements MemberRepository {
     }
   }
 
-  // Scans the whole จัดตี้ war-planning grid for cells still holding the old name (an admin may
-  // have typed it into any team block) and rewrites them — a rename doesn't otherwise propagate
-  // there since those are plain typed cells, not formulas.
-  private async renameInJadti(oldName: string, newName: string): Promise<void> {
-    try {
-      const rows = await this.values(`${JADTI_SHEET}!${JADTI_RANGE}`);
-      const target = normalizeName(oldName);
-      const updates: { range: string; values: string[][] }[] = [];
-      rows.forEach((row, r) => {
-        row.forEach((cell, c) => {
-          if (cell && normalizeName(cell) === target) {
-            const colLetter = String.fromCharCode(65 + c);
-            updates.push({ range: `${JADTI_SHEET}!${colLetter}${r + 1}`, values: [[newName]] });
-          }
+  // Scans the จัดตี้ and หน้างานอีลิท team-roster grids for cells still holding the old name (an
+  // admin may have typed it into any team block) and rewrites or blanks them — these don't
+  // otherwise stay in sync since they're plain typed cells, not formulas. Pass `newValue: null`
+  // to clear the cell instead of renaming it (used when a member leaves the guild, so their
+  // slot actually opens back up instead of just showing grayed-out via conditional formatting).
+  private async updateNameInTeamRosters(oldName: string, newValue: string | null): Promise<void> {
+    const target = normalizeName(oldName);
+    for (const { sheet, range } of [
+      { sheet: JADTI_SHEET, range: JADTI_RANGE },
+      { sheet: ELITE_SHEET, range: ELITE_RANGE },
+    ]) {
+      try {
+        const rows = await this.values(`${sheet}!${range}`);
+        const updates: { range: string; values: string[][] }[] = [];
+        rows.forEach((row, r) => {
+          row.forEach((cell, c) => {
+            if (cell && normalizeName(cell) === target) {
+              const colLetter = String.fromCharCode(65 + c);
+              updates.push({ range: `${sheet}!${colLetter}${r + 1}`, values: [[newValue ?? ""]] });
+            }
+          });
         });
-      });
-      if (updates.length === 0) return;
-      await this.sheets.spreadsheets.values.batchUpdate({
-        spreadsheetId: this.spreadsheetId,
-        requestBody: { valueInputOption: "RAW", data: updates },
-      });
-    } catch (err) {
-      console.error(`WARN Failed to rename "${oldName}" -> "${newName}" on "${JADTI_SHEET}" tab`, err);
+        if (updates.length === 0) continue;
+        await this.sheets.spreadsheets.values.batchUpdate({
+          spreadsheetId: this.spreadsheetId,
+          requestBody: { valueInputOption: "RAW", data: updates },
+        });
+      } catch (err) {
+        console.error(`WARN Failed to update "${oldName}" on "${sheet}" tab`, err);
+      }
     }
   }
 
@@ -535,7 +546,7 @@ export class GoogleSheetsMemberRepository implements MemberRepository {
 
     if (updates.name) {
       await this.renameInDisplaySheet(member.characterName, updates.name);
-      await this.renameInJadti(member.characterName, updates.name);
+      await this.updateNameInTeamRosters(member.characterName, updates.name);
     }
     if (updates.className) {
       await this.applyCharacterNameColor(member.discordId, finalClassName);
@@ -773,6 +784,7 @@ export class GoogleSheetsMemberRepository implements MemberRepository {
 
     if (status === "Left") {
       await this.removeFromDisplaySheet(member.characterName);
+      await this.updateNameInTeamRosters(member.characterName, null);
     } else if (status === "Active") {
       await this.addToDisplaySheet(member.characterName, member.className);
     }
