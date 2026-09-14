@@ -59,20 +59,20 @@ export class AttendanceService {
     return pending.length;
   }
 
-  /** Active members not yet marked present today — backs the admin check-in panel's list. */
-  async getMembersNeedingCheckIn(): Promise<Member[]> {
-    const [members, presentToday] = await Promise.all([
+  /** Active members not yet marked present on the given date (defaults to today) — backs the admin check-in panel's list. */
+  async getMembersNeedingCheckIn(at: Date = new Date()): Promise<Member[]> {
+    const [members, presentOnDate] = await Promise.all([
       this.memberRepository.getAllActiveMembers(),
-      this.attendanceRepository.getPresentTodayNormalizedNames(new Date()),
+      this.attendanceRepository.getPresentTodayNormalizedNames(at),
     ]);
     return members
-      .filter((m) => !presentToday.has(normalizeName(m.characterName)))
+      .filter((m) => !presentOnDate.has(normalizeName(m.characterName)))
       .sort((a, b) => a.characterName.localeCompare(b.characterName));
   }
 
-  /** Present/missing counts and names for today — backs the "สรุปวอ" War summary button. */
-  async getWarSummary(): Promise<{ presentCount: number; missingCount: number; missingNames: string[] }> {
-    const missing = await this.getMembersNeedingCheckIn();
+  /** Present/missing counts and names for the given date (defaults to today) — backs the "สรุปวอ" War summary button. */
+  async getWarSummary(at: Date = new Date()): Promise<{ presentCount: number; missingCount: number; missingNames: string[] }> {
+    const missing = await this.getMembersNeedingCheckIn(at);
     const totalActive = await this.memberRepository.getAllActiveMembers();
     return {
       presentCount: totalActive.length - missing.length,
