@@ -3,6 +3,7 @@ import { VALID_TEAMS } from "../types/member.js";
 import type { HistoryEntry, Member } from "../types/member.js";
 import { generateNextId } from "../utils/id.js";
 import { normalizeName } from "../utils/normalize.js";
+import { isValidHex } from "../utils/color.js";
 import type { QueueService } from "./queue-service.js";
 import type { ClassService } from "./class-service.js";
 import type { SheetDisplayService } from "./sheet-display-service.js";
@@ -412,5 +413,39 @@ export class MemberService {
 
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Changes a class's color and repaints everywhere that color is already baked in — the
+   * Members/"Little Home member" rows and the จัดตี้ tab's class-highlighting rules — instead
+   * of just writing Classes!ColorHex and leaving everything else showing the old color until
+   * the next unrelated write happens to touch it.
+   */
+  async setClassColor(className: string, colorHex: string): Promise<{ className: string; colorHex: string; membersRecolored: number; jadtiRulesUpdated: number }> {
+    if (!isValidHex(colorHex)) {
+      throw new UserError("❌ Invalid hex color. Use a 6-digit hex code like `#0cf0d9`.\n❌ รหัสสีไม่ถูกต้อง กรุณาใช้รูปแบบ 6 หลัก เช่น `#0cf0d9`");
+    }
+
+    const activeClasses = await this.classService.getActiveClasses();
+    const canonical = activeClasses.find((c) => normalizeName(c) === normalizeName(className));
+    if (!canonical) {
+      throw new UserError("❌ Invalid class. Please select an active class.\n❌ อาชีพไม่ถูกต้อง กรุณาเลือกอาชีพจากรายการ");
+    }
+
+    await this.repository.updateClassColorHex(canonical, colorHex);
+    this.classService.invalidateCache();
+
+    const [membersRecolored, jadtiRulesUpdated] = await Promise.all([
+      this.repository.recolorMembersByClass(canonical, colorHex),
+      this.repository.recolorJadtiClass(canonical, colorHex),
+    ]);
+
+    if (this.queueService) {
+      await this.queueService.refreshVisualQueue().catch((err) => {
+        console.error("WARN Failed to refresh queue display after class color change", err);
+      });
+    }
+
+    return { className: canonical, colorHex, membersRecolored, jadtiRulesUpdated };
   }
 }

@@ -10,6 +10,11 @@ export class ClassService {
 
   constructor(private readonly repository: MemberRepository) {}
 
+  /** Drops the in-memory Classes cache so the next read reflects a just-made change immediately. */
+  invalidateCache(): void {
+    this.cache = null;
+  }
+
   async getClassConfigs(): Promise<ClassConfig[]> {
     const now = Date.now();
     if (this.cache && now - this.lastFetch < this.CACHE_TTL) {

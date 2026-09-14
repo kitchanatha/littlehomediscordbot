@@ -54,6 +54,9 @@ class FakeRepo implements MemberRepository {
   combatPowerWrites: { memberId: string; combatPower: string }[] = [];
   async findGameRosterCombatPower(characterName: string) { return this.gameRoster.get(normalizeName(characterName)) ?? null; }
   async setCombatPower(memberId: string, combatPower: string) { this.combatPowerWrites.push({ memberId, combatPower }); }
+  async updateClassColorHex() {}
+  async recolorMembersByClass() { return 0; }
+  async recolorJadtiClass() { return 0; }
   async updateMemberStatus(m: Member, status: string, lastUpdated: string, audit: any, newUsername?: string) {
     const i = this.members.findIndex(member => member.memberId === m.memberId);
     if (i >= 0) {

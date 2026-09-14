@@ -1,5 +1,9 @@
 import { sheets_v4 } from "googleapis";
 
+export function isValidHex(hex: string): boolean {
+  return /^#[0-9a-fA-F]{6}$/.test(hex);
+}
+
 export function hexToRgb(hex: string): sheets_v4.Schema$Color | null {
   if (!hex) return null;
   

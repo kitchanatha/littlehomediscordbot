@@ -35,4 +35,10 @@ export interface MemberRepository {
   // character isn't in the transcribed roster yet.
   findGameRosterCombatPower(characterName: string): Promise<string | null>;
   setCombatPower(memberId: string, combatPower: string): Promise<void>;
+  // Class-color admin tooling: write the new hex to the Classes tab, then repaint everywhere
+  // that color was already baked in (Members/display rows written on the fly, and the จัดตี้
+  // tab's conditional-format rules which are baked-in literals with no live link back here).
+  updateClassColorHex(className: string, colorHex: string): Promise<void>;
+  recolorMembersByClass(className: string, colorHex: string): Promise<number>;
+  recolorJadtiClass(className: string, colorHex: string): Promise<number>;
 }

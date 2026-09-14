@@ -79,6 +79,9 @@ class FakeMemberRepo implements MemberRepository {
   async getClassConfigs() { return []; }
   async findGameRosterCombatPower() { return null; }
   async setCombatPower() {}
+  async updateClassColorHex() {}
+  async recolorMembersByClass() { return 0; }
+  async recolorJadtiClass() { return 0; }
 }
 
 describe("Visual Queue Update", () => {

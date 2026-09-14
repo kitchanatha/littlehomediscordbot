@@ -1,5 +1,6 @@
 import { Events, MessageFlags } from "discord.js";
 import { handleAssign } from "./commands/assign.js";
+import { handleSetClassColor } from "./commands/set-class-color.js";
 import { handleHelp } from "./commands/help.js";
 import {
   handlePanelButton,
@@ -322,6 +323,9 @@ discordClient.on(Events.InteractionCreate, async (interaction) => {
         break;
       case "assign":
         await handleAssign(interaction, service);
+        break;
+      case "set_class_color":
+        await handleSetClassColor(interaction, service);
         break;
       case "war_roster":
         await handleWarRoster(interaction, warRosterService);

@@ -101,6 +101,11 @@ export const commandDefinitions = [
         .addChoices({ name: "Card", value: "Card" }, { name: "Accessory", value: "Accessory" })
     ),
   new SlashCommandBuilder()
+    .setName("set_class_color")
+    .setDescription("Set a class's color and repaint it everywhere it's already used (Admin only)")
+    .addStringOption((o) => o.setName("class").setDescription("Class to recolor").setRequired(true).setAutocomplete(true))
+    .addStringOption((o) => o.setName("hex").setDescription("Hex color, e.g. #0cf0d9").setRequired(true)),
+  new SlashCommandBuilder()
     .setName("queue_remove")
     .setDescription("Remove a member from a queue (Admin only)")
     .addUserOption((o) => o.setName("member").setDescription("Member to remove").setRequired(true))

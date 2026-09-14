@@ -866,4 +866,114 @@ export class GoogleSheetsMemberRepository implements MemberRepository {
       requestBody: { values: [[combatPower]] },
     });
   }
+
+  async updateClassColorHex(className: string, colorHex: string): Promise<void> {
+    const rows = await this.values(`${SHEETS.classes}!A2:F`);
+    const index = rows.findIndex((r) => normalizeName(r[1] ?? "") === normalizeName(className));
+    if (index < 0) throw new Error(`Class "${className}" not found`);
+    await this.sheets.spreadsheets.values.update({
+      spreadsheetId: this.spreadsheetId,
+      range: `${SHEETS.classes}!F${index + 2}`,
+      valueInputOption: "RAW",
+      requestBody: { values: [[colorHex]] },
+    });
+  }
+
+  // Repaints every currently-Active member of this class on both the Members tab and the
+  // "Little Home member" display tab — these are normally colored on the fly (registration,
+  // name/class change), so an existing row only picks up a new class color when this runs.
+  async recolorMembersByClass(className: string, colorHex: string): Promise<number> {
+    const color = hexToRgb(colorHex);
+    if (!color) return 0;
+
+    await this.ensureSheetIds();
+    const membersSheetId = this.sheetIds.get(SHEETS.members);
+    const displaySheetId = this.sheetIds.get(DISPLAY_SHEET);
+
+    const [memberRows, displayRows] = await Promise.all([
+      this.values(`${SHEETS.members}!A2:J`),
+      this.values(`${DISPLAY_SHEET}!A2:A`),
+    ]);
+    const displayIndexByName = new Map(displayRows.map((r, i) => [normalizeName(r[0] ?? ""), i]));
+
+    const requests: sheets_v4.Schema$Request[] = [];
+    let count = 0;
+    memberRows.forEach((row, i) => {
+      const rowClassName = row[4] ?? "";
+      const status = row[7] ?? "";
+      if (normalizeName(rowClassName) !== normalizeName(className) || status !== "Active") return;
+      count++;
+
+      if (membersSheetId !== undefined) {
+        requests.push({
+          repeatCell: {
+            range: { sheetId: membersSheetId, startRowIndex: i + 1, endRowIndex: i + 2, startColumnIndex: 0, endColumnIndex: 10 },
+            cell: { userEnteredFormat: { backgroundColor: color } },
+            fields: "userEnteredFormat.backgroundColor",
+          },
+        });
+      }
+
+      const displayIdx = displayIndexByName.get(normalizeName(row[3] ?? ""));
+      if (displayIdx !== undefined && displaySheetId !== undefined) {
+        requests.push({
+          repeatCell: {
+            range: { sheetId: displaySheetId, startRowIndex: displayIdx + 1, endRowIndex: displayIdx + 2, startColumnIndex: 0, endColumnIndex: 2 },
+            cell: { userEnteredFormat: { backgroundColor: color } },
+            fields: "userEnteredFormat.backgroundColor",
+          },
+        });
+      }
+    });
+
+    if (requests.length > 0) {
+      await this.sheets.spreadsheets.batchUpdate({ spreadsheetId: this.spreadsheetId, requestBody: { requests } });
+    }
+    return count;
+  }
+
+  // จัดตี้'s class-based highlighting is baked-in literal colors on ~40 conditional-format
+  // rules (one per class per team block) — Sheets can't make a CUSTOM_FORMULA rule pull its
+  // color from another sheet, so a class-color change needs these rewritten in place.
+  async recolorJadtiClass(className: string, colorHex: string): Promise<number> {
+    const color = hexToRgb(colorHex);
+    if (!color) return 0;
+
+    await this.ensureSheetIds();
+    const jadtiSheetId = this.sheetIds.get(JADTI_SHEET);
+    if (jadtiSheetId === undefined) return 0;
+
+    const meta = await this.sheets.spreadsheets.get({ spreadsheetId: this.spreadsheetId, includeGridData: false });
+    const jadti = meta.data.sheets?.find((s) => s.properties?.sheetId === jadtiSheetId);
+    const rules = jadti?.conditionalFormats ?? [];
+
+    // Matches the exact class-name comparison in formulas like
+    // =AND(A3<>"",IFERROR(VLOOKUP(A3,$K:$O,2,FALSE),"")="Druid",...) — not a bare substring
+    // check, so a class name that happens to also be a member's name can't false-match.
+    const marker = `)="${className}",`;
+
+    const requests: sheets_v4.Schema$Request[] = [];
+    rules.forEach((rule, index) => {
+      const formula = rule.booleanRule?.condition?.values?.[0]?.userEnteredValue ?? "";
+      if (!formula.includes(marker)) return;
+      requests.push({
+        updateConditionalFormatRule: {
+          index,
+          sheetId: jadtiSheetId,
+          rule: {
+            ranges: rule.ranges,
+            booleanRule: {
+              condition: rule.booleanRule!.condition,
+              format: { backgroundColor: color, backgroundColorStyle: { rgbColor: color } },
+            },
+          },
+        },
+      });
+    });
+
+    if (requests.length > 0) {
+      await this.sheets.spreadsheets.batchUpdate({ spreadsheetId: this.spreadsheetId, requestBody: { requests } });
+    }
+    return requests.length;
+  }
 }

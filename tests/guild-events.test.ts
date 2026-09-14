@@ -61,6 +61,9 @@ class FakeMemberRepo implements MemberRepository {
   async getClassConfigs() { return []; }
   async findGameRosterCombatPower() { return null; }
   async setCombatPower() {}
+  async updateClassColorHex() {}
+  async recolorMembersByClass() { return 0; }
+  async recolorJadtiClass() { return 0; }
   async updateMemberStatus(m: Member, status: string, lastUpdated: string, audit: any, newUsername?: string) {
     const i = this.members.findIndex(member => member.memberId === m.memberId);
     if (i >= 0) {
