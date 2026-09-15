@@ -24,9 +24,11 @@ const schema = z.object({
   // auto-registers them from it. Requires the "Message Content Intent" to be enabled in the
   // Discord Developer Portal. Leave blank to disable.
   AUTO_REGISTER_CHANNEL_ID: z.string().optional().default(""),
+  // Text channel where a new Discord member joining the server is announced. Leave blank to disable.
+  MEMBER_UPDATE_CHANNEL_ID: z.string().optional().default(""),
   // Text channel where a registered member leaving the Discord server is announced.
   // Leave blank to disable.
-  MEMBER_UPDATE_CHANNEL_ID: z.string().optional().default(""),
+  MEMBER_LEAVE_CHANNEL_ID: z.string().optional().default(""),
   // Text channel where members post a name/class change request as a plain message; the bot
   // applies it to their own registered profile automatically. Requires "Message Content
   // Intent" in the Discord Developer Portal. Leave blank to disable.
@@ -49,5 +51,6 @@ export const env = {
   WAR_LEAVE_CHANNEL_ID: parsed.data.WAR_LEAVE_CHANNEL_ID.trim(),
   AUTO_REGISTER_CHANNEL_ID: parsed.data.AUTO_REGISTER_CHANNEL_ID.trim(),
   MEMBER_UPDATE_CHANNEL_ID: parsed.data.MEMBER_UPDATE_CHANNEL_ID.trim(),
+  MEMBER_LEAVE_CHANNEL_ID: parsed.data.MEMBER_LEAVE_CHANNEL_ID.trim(),
   NAME_CLASS_CHANGE_CHANNEL_ID: parsed.data.NAME_CLASS_CHANGE_CHANNEL_ID.trim(),
 };

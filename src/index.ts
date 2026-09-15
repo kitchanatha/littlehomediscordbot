@@ -106,26 +106,41 @@ discordClient.once(Events.ClientReady, async (readyClient) => {
   }
 });
 
+// Matches the guild's existing welcome-bot template style: since these always post right as
+// the event happens, the date half of "วันนี้ | เวลา HH:MM" is never anything but "today".
+function formatEventTime(at: Date): string {
+  const hh = String(at.getHours()).padStart(2, "0");
+  const mm = String(at.getMinutes()).padStart(2, "0");
+  return `วันนี้ เวลา ${hh}:${mm}`;
+}
+
 discordClient.on(Events.GuildMemberRemove, async (member) => {
   if (member.guild.id !== env.DISCORD_GUILD_ID) return;
   console.log(`INFO Member left guild: ${member.user.tag} (${member.id})`);
 
   try {
     const removedMember = await service.handleGuildMemberRemove(member.id);
-    if (removedMember && env.MEMBER_UPDATE_CHANNEL_ID) {
-      await announceMemberLeft(removedMember.characterName);
+    if (removedMember && env.MEMBER_LEAVE_CHANNEL_ID) {
+      await announceMemberLeft(removedMember.characterName, member.guild.name, member.guild.memberCount);
     }
   } catch (err) {
     console.error(`ERROR Failed to handle guildMemberRemove for ${member.id}`, err);
   }
 });
 
-async function announceMemberLeft(characterName: string): Promise<void> {
+async function announceMemberLeft(characterName: string, guildName: string, memberCount: number): Promise<void> {
   try {
-    const channel = await discordClient.channels.fetch(env.MEMBER_UPDATE_CHANNEL_ID);
+    const channel = await discordClient.channels.fetch(env.MEMBER_LEAVE_CHANNEL_ID);
     if (!channel || !channel.isTextBased() || !("send" in channel)) return;
     await channel.send(
-      `👋 **${characterName}** has left the Discord server and is now marked as Left in the guild roster.\n👋 **${characterName}** ออกจากดิสคอร์ดแล้ว และถูกทำเครื่องหมายว่าออกจากกิลด์`
+      [
+        "🚪 ลาก่อน...",
+        "",
+        `**${characterName}** ได้ออกจาก ${guildName} แล้ว`,
+        "",
+        "หวังว่าจะได้พบกันอีกครั้ง ❤️",
+        `เหลือสมาชิก ${memberCount} | ${formatEventTime(new Date())}`,
+      ].join("\n")
     );
   } catch (err) {
     console.error("ERROR Failed to post member-left announcement", err);
@@ -138,7 +153,27 @@ discordClient.on(Events.GuildMemberAdd, async (member) => {
   await service.handleGuildMemberAdd(member.id, member.user.username).catch((err) => {
     console.error(`ERROR Failed to handle guildMemberAdd for ${member.id}`, err);
   });
+  if (env.MEMBER_UPDATE_CHANNEL_ID) {
+    await announceMemberJoined(member.id, member.guild.name, member.guild.memberCount).catch((err) => {
+      console.error(`ERROR Failed to post member-joined announcement for ${member.id}`, err);
+    });
+  }
 });
+
+async function announceMemberJoined(discordId: string, guildName: string, memberCount: number): Promise<void> {
+  const channel = await discordClient.channels.fetch(env.MEMBER_UPDATE_CHANNEL_ID);
+  if (!channel || !channel.isTextBased() || !("send" in channel)) return;
+  await channel.send(
+    [
+      "👋 ยินดีต้อนรับ!",
+      "",
+      `ยินดีต้อนรับ <@${discordId}> เข้าสู่ ${guildName}! 🎉`,
+      "",
+      "ขอให้สนุกกับการอยู่ในเซิร์ฟเวอร์ของเรา แนะนำตัวเอง เพื่อรับยศเข้ากลุ่ม",
+      `สมาชิกคนที่ ${memberCount} | ${formatEventTime(new Date())}`,
+    ].join("\n")
+  );
+}
 
 discordClient.on(Events.VoiceStateUpdate, async (oldState, newState) => {
   if (env.WAR_CHECKIN_VOICE_CHANNEL_IDS.length === 0) return;
