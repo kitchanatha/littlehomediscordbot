@@ -3,7 +3,7 @@ import { env } from "../config/env.js";
 import { sheetsClient } from "../google/sheets-client.js";
 import type { HistoryEntry, LegacyMember, Member } from "../types/member.js";
 import type { ClassConfig } from "../types/class.js";
-import { normalizeName } from "../utils/normalize.js";
+import { normalizeName, coreName, namesMatch } from "../utils/normalize.js";
 import { hexToRgb } from "../utils/color.js";
 import type { MemberRepository } from "./member-repository.js";
 
@@ -174,7 +174,7 @@ export class GoogleSheetsMemberRepository implements MemberRepository {
   private async addToDisplaySheet(characterName: string, className: string): Promise<void> {
     try {
       const rows = await this.values(`${DISPLAY_SHEET}!A2:A`);
-      const exists = rows.some((r) => normalizeName(r[0] ?? "") === normalizeName(characterName));
+      const exists = rows.some((r) => namesMatch(r[0] ?? "", characterName));
       if (!exists) {
         await this.sheets.spreadsheets.values.append({
           spreadsheetId: this.spreadsheetId,
@@ -193,7 +193,7 @@ export class GoogleSheetsMemberRepository implements MemberRepository {
   private async renameInDisplaySheet(oldName: string, newName: string): Promise<void> {
     try {
       const rows = await this.values(`${DISPLAY_SHEET}!A2:A`);
-      const idx = rows.findIndex((r) => normalizeName(r[0] ?? "") === normalizeName(oldName));
+      const idx = rows.findIndex((r) => namesMatch(r[0] ?? "", oldName));
       if (idx < 0) return;
       await this.sheets.spreadsheets.values.update({
         spreadsheetId: this.spreadsheetId,
@@ -212,7 +212,6 @@ export class GoogleSheetsMemberRepository implements MemberRepository {
   // to clear the cell instead of renaming it (used when a member leaves the guild, so their
   // slot actually opens back up instead of just showing grayed-out via conditional formatting).
   private async updateNameInTeamRosters(oldName: string, newValue: string | null): Promise<void> {
-    const target = normalizeName(oldName);
     for (const { sheet, range } of [
       { sheet: JADTI_SHEET, range: JADTI_RANGE },
       { sheet: ELITE_SHEET, range: ELITE_RANGE },
@@ -222,7 +221,7 @@ export class GoogleSheetsMemberRepository implements MemberRepository {
         const updates: { range: string; values: string[][] }[] = [];
         rows.forEach((row, r) => {
           row.forEach((cell, c) => {
-            if (cell && normalizeName(cell) === target) {
+            if (cell && namesMatch(cell, oldName)) {
               const colLetter = String.fromCharCode(65 + c);
               updates.push({ range: `${sheet}!${colLetter}${r + 1}`, values: [[newValue ?? ""]] });
             }
@@ -247,7 +246,7 @@ export class GoogleSheetsMemberRepository implements MemberRepository {
       const sheetId = this.sheetIds.get(DISPLAY_SHEET);
       if (sheetId === undefined) return;
       const rows = await this.values(`${DISPLAY_SHEET}!A2:A`);
-      const idx = rows.findIndex((r) => normalizeName(r[0] ?? "") === normalizeName(characterName));
+      const idx = rows.findIndex((r) => namesMatch(r[0] ?? "", characterName));
       if (idx < 0) return;
       await this.sheets.spreadsheets.batchUpdate({
         spreadsheetId: this.spreadsheetId,
@@ -799,7 +798,7 @@ export class GoogleSheetsMemberRepository implements MemberRepository {
       const sheetId = this.sheetIds.get(DISPLAY_SHEET);
       if (sheetId === undefined) return;
       const rows = await this.values(`${DISPLAY_SHEET}!A2:A`);
-      const idx = rows.findIndex((r) => normalizeName(r[0] ?? "") === normalizeName(characterName));
+      const idx = rows.findIndex((r) => namesMatch(r[0] ?? "", characterName));
       if (idx < 0) return;
       await this.sheets.spreadsheets.batchUpdate({
         spreadsheetId: this.spreadsheetId,
@@ -906,7 +905,15 @@ export class GoogleSheetsMemberRepository implements MemberRepository {
       this.values(`${SHEETS.members}!A2:J`),
       this.values(`${DISPLAY_SHEET}!A2:A`),
     ]);
-    const displayIndexByName = new Map(displayRows.map((r, i) => [normalizeName(r[0] ?? ""), i]));
+    // Keyed by coreName (decoration-insensitive) rather than normalizeName, and one entry per
+    // "/"-separated candidate — same reasoning as namesMatch, kept as a Map here for O(1)
+    // lookups against ~150 members instead of an O(n) namesMatch scan per row.
+    const displayIndexByName = new Map<string, number>();
+    displayRows.forEach((r, i) => {
+      for (const candidate of (r[0] ?? "").split("/").map((s) => s.trim()).filter(Boolean)) {
+        displayIndexByName.set(coreName(candidate), i);
+      }
+    });
 
     const requests: sheets_v4.Schema$Request[] = [];
     let count = 0;
@@ -926,7 +933,7 @@ export class GoogleSheetsMemberRepository implements MemberRepository {
         });
       }
 
-      const displayIdx = displayIndexByName.get(normalizeName(row[3] ?? ""));
+      const displayIdx = displayIndexByName.get(coreName(row[3] ?? ""));
       if (displayIdx !== undefined && displaySheetId !== undefined) {
         requests.push({
           repeatCell: {
