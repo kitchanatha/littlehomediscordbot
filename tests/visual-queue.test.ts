@@ -41,6 +41,9 @@ class FakeQueueRepo implements QueueRepository {
     this.lastCardQueue = cardQueue;
     this.lastAccessoryQueue = accessoryQueue;
   }
+  async deleteMemberHistory(discordId: string) {
+    this.history = this.history.filter((h) => h.discordId !== discordId);
+  }
   async validateReadiness() {}
   async getClassConfigs() { return []; }
 }
@@ -82,6 +85,10 @@ class FakeMemberRepo implements MemberRepository {
   async updateClassColorHex() {}
   async recolorMembersByClass() { return 0; }
   async recolorJadtiClass() { return 0; }
+  async deleteMemberCompletely(member: Member) {
+    const i = this.members.findIndex((m) => m.memberId === member.memberId);
+    if (i >= 0) this.members.splice(i, 1);
+  }
 }
 
 describe("Visual Queue Update", () => {

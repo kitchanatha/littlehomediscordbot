@@ -811,6 +811,35 @@ export class GoogleSheetsMemberRepository implements MemberRepository {
     }
   }
 
+  async deleteMemberCompletely(member: Member): Promise<void> {
+    await this.ensureSheetIds();
+    const membersSheetId = this.sheetIds.get(SHEETS.members);
+    const auditSheetId = this.sheetIds.get(SHEETS.auditLog);
+    if (membersSheetId === undefined) throw new Error(`Sheet "${SHEETS.members}" not found`);
+
+    const memberRowIndex = await this.findMemberRow(member.discordId);
+    const requests: sheets_v4.Schema$Request[] = [
+      { deleteDimension: { range: { sheetId: membersSheetId, dimension: "ROWS", startIndex: memberRowIndex, endIndex: memberRowIndex + 1 } } },
+    ];
+
+    if (auditSheetId !== undefined) {
+      const auditRows = await this.values(`${SHEETS.auditLog}!A2:I`);
+      const idxs = auditRows
+        .map((r, i) => ({ match: r[1] === member.memberId || r[2] === member.discordId, i }))
+        .filter((x) => x.match)
+        .map((x) => x.i)
+        .sort((a, b) => b - a);
+      for (const idx of idxs) {
+        requests.push({ deleteDimension: { range: { sheetId: auditSheetId, dimension: "ROWS", startIndex: idx + 1, endIndex: idx + 2 } } });
+      }
+    }
+
+    await this.sheets.spreadsheets.batchUpdate({ spreadsheetId: this.spreadsheetId, requestBody: { requests } });
+
+    await this.removeFromDisplaySheet(member.characterName);
+    await this.updateNameInTeamRosters(member.characterName, null);
+  }
+
   async getAllMembers(): Promise<Member[]> {
     const rows = await this.values(`${SHEETS.members}!A2:J`);
     return rows.map((row) => this.memberFromRow(row));

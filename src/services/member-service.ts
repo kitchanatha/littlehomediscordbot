@@ -340,30 +340,33 @@ export class MemberService {
     return updated;
   }
 
+  // A member leaving deletes all their data outright (Members row, attendance history, queue
+  // history, audit log entries, and every roster/display sheet) rather than marking them
+  // "Left" and keeping history — an explicit, deliberate choice: it's hard to undo, it erases
+  // real guild history (past war attendance, item-queue records), and it means /register
+  // starts fresh instead of auto-restoring their old profile if they rejoin later.
   async handleGuildMemberRemove(discordId: string): Promise<Member | null> {
     const member = await this.repository.findByDiscordId(discordId);
-    if (!member || member.status === "Left") return null;
+    if (!member) return null;
 
-    const now = this.now();
-    const audit = {
-      action: "GUILD_MEMBER_LEFT",
-      targetMemberId: member.memberId,
-      targetDiscordId: member.discordId,
-      adminDiscordId: "SYSTEM",
-      oldValue1: member.status,
-      newValue1: "Left",
-      timestamp: now,
-    };
+    await this.repository.deleteMemberCompletely(member);
 
-    await this.repository.updateMemberStatus(member, "Left", now, audit);
-
-    await this.sheetDisplayService.refreshAllMemberDisplays(member.memberId).catch(err => {
-      console.error("WARN Failed to refresh sheet displays after member left", err);
+    await this.sheetDisplayService.clearMemberEverywhere(member.characterName).catch((err) => {
+      console.error("WARN Failed to clear roster displays after member left", err);
     });
 
     if (this.queueService) {
       await this.queueService.cleanupMemberQueues(discordId).catch((err) => {
         console.error("WARN Failed to cleanup member queues after guild leave", err);
+      });
+      await this.queueService.deleteMemberHistory(discordId).catch((err) => {
+        console.error("WARN Failed to delete queue history after guild leave", err);
+      });
+    }
+
+    if (this.attendanceService) {
+      await this.attendanceService.deleteMemberAttendance(member.characterName, member.className).catch((err) => {
+        console.error("WARN Failed to delete attendance history after guild leave", err);
       });
     }
 

@@ -35,6 +35,9 @@ class FakeQueueRepo implements QueueRepository {
   async getAllHistoryIds() { return this.history.map(h => h.historyId); }
   async getAllEntryIds() { return this.entries.map(e => e.queueEntryId); }
   async updateVisualDisplay() {}
+  async deleteMemberHistory(discordId: string) {
+    this.history = this.history.filter(h => h.discordId !== discordId);
+  }
   async validateReadiness() {}
   async getClassConfigs() { return []; }
 }
@@ -72,6 +75,10 @@ class FakeMemberRepo implements MemberRepository {
         if (newUsername) this.members[i].discordUsername = newUsername;
     }
   }
+  async deleteMemberCompletely(member: Member) {
+    const i = this.members.findIndex(m => m.memberId === member.memberId);
+    if (i >= 0) this.members.splice(i, 1);
+  }
 }
 
 describe("Guild Events Handling", () => {
@@ -81,13 +88,14 @@ describe("Guild Events Handling", () => {
     };
     const displayService: any = {
       refreshAllMemberDisplays: () => Promise.resolve(),
+      clearMemberEverywhere: () => Promise.resolve(),
     };
     const queueService = new QueueService(queueRepo as any, memberRepo, classService);
     const memberService = new MemberService(memberRepo, classService, displayService, queueService);
     return { queueService, memberService, classService, displayService };
   };
 
-  it("marks member as Left and cleans up queues on guildMemberRemove", async () => {
+  it("deletes member entirely and cleans up queues on guildMemberRemove", async () => {
     const memberRepo = new FakeMemberRepo();
     const queueRepo = new FakeQueueRepo();
     const { memberService } = createServices(memberRepo, queueRepo as any);
@@ -133,15 +141,13 @@ describe("Guild Events Handling", () => {
     // Act
     await memberService.handleGuildMemberRemove("user123");
 
-    // Assert
-    expect(member.status).toBe("Left");
+    // Assert: the member's row is gone entirely, not just marked Left
+    expect(memberRepo.members.find(m => m.discordId === "user123")).toBeUndefined();
     expect(queueRepo.entries).toHaveLength(0);
-    
-    // Check history: DEQUEUE with no cooldown
-    expect(queueRepo.history).toHaveLength(2);
-    expect(queueRepo.history[0].action).toBe("DEQUEUE");
-    expect(queueRepo.history[0].cooldownUntil).toBe("");
-    expect(queueRepo.history[0].changedBy).toBe("SYSTEM");
+
+    // Their queue history (including the DEQUEUE entries cleanupMemberQueues just wrote) is
+    // deleted too — "leave the guild" means no trace left, not even the leave record itself.
+    expect(queueRepo.history).toHaveLength(0);
   });
 
   it("re-activates Left member on guildMemberAdd and updates username", async () => {
@@ -171,7 +177,7 @@ describe("Guild Events Handling", () => {
     expect(member.discordUsername).toBe("newname");
   });
 
-  it("reconciles members by marking missing ones as Left", async () => {
+  it("reconciles members by deleting ones no longer in the guild", async () => {
     const memberRepo = new FakeMemberRepo();
     const queueRepo = new FakeQueueRepo();
     const { memberService } = createServices(memberRepo, queueRepo as any);
@@ -186,7 +192,7 @@ describe("Guild Events Handling", () => {
 
     // Assert
     expect(result.leftCount).toBe(1);
-    expect(memberRepo.members.find(m => m.discordId === "not_in_guild")?.status).toBe("Left");
+    expect(memberRepo.members.find(m => m.discordId === "not_in_guild")).toBeUndefined();
     expect(memberRepo.members.find(m => m.discordId === "in_guild")?.status).toBe("Active");
   });
 });

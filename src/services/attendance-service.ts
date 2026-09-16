@@ -118,4 +118,9 @@ export class AttendanceService {
     }
     return checkedIn;
   }
+
+  /** Deletes a member's rows from the master attendance sheet and their class tab — used when they leave and all their data should go. */
+  async deleteMemberAttendance(characterName: string, className: string): Promise<void> {
+    await this.attendanceRepository.deleteMemberAttendance(characterName, className);
+  }
 }

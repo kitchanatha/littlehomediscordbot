@@ -285,4 +285,9 @@ export class QueueService {
 
     await this.refreshVisualQueue();
   }
+
+  /** Deletes every Queue_History row for this member — used when they leave and all their data should go. */
+  async deleteMemberHistory(discordId: string): Promise<void> {
+    await this.queueRepository.deleteMemberHistory(discordId);
+  }
 }

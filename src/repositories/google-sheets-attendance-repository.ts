@@ -1,7 +1,7 @@
 import { sheets_v4 } from "googleapis";
 import { env } from "../config/env.js";
 import { sheetsClient } from "../google/sheets-client.js";
-import { coreName, normalizeName } from "../utils/normalize.js";
+import { coreName, namesMatch, normalizeName } from "../utils/normalize.js";
 import type { AttendanceRepository } from "./attendance-repository.js";
 import type { AttendanceResult, AttendanceStatus } from "../types/attendance.js";
 
@@ -398,6 +398,41 @@ export class GoogleSheetsAttendanceRepository implements AttendanceRepository {
     await this.ensureSheetIds();
     if (!this.sheetIds.has(MASTER_SHEET)) {
       throw new Error(`Attendance database is not initialized: missing sheet "${MASTER_SHEET}"`);
+    }
+  }
+
+  async deleteMemberAttendance(characterName: string, className: string): Promise<void> {
+    await this.ensureSheetIds();
+    const requests: sheets_v4.Schema$Request[] = [];
+
+    const masterSheetId = this.sheetIds.get(MASTER_SHEET);
+    if (masterSheetId !== undefined) {
+      const rows = await this.values(`${MASTER_SHEET}!A2:Z`);
+      const idxs = rows
+        .map((r, i) => ({ match: namesMatch(r[MASTER_NAME_COL] ?? "", characterName), i }))
+        .filter((x) => x.match)
+        .map((x) => x.i)
+        .sort((a, b) => b - a);
+      for (const idx of idxs) {
+        requests.push({ deleteDimension: { range: { sheetId: masterSheetId, dimension: "ROWS", startIndex: idx + 1, endIndex: idx + 2 } } });
+      }
+    }
+
+    const classSheetId = className ? this.sheetIds.get(className) : undefined;
+    if (classSheetId !== undefined) {
+      const rows = await this.values(`${className}!A2:Z`);
+      const idxs = rows
+        .map((r, i) => ({ match: namesMatch(r[CLASS_NAME_COL] ?? "", characterName), i }))
+        .filter((x) => x.match)
+        .map((x) => x.i)
+        .sort((a, b) => b - a);
+      for (const idx of idxs) {
+        requests.push({ deleteDimension: { range: { sheetId: classSheetId, dimension: "ROWS", startIndex: idx + 1, endIndex: idx + 2 } } });
+      }
+    }
+
+    if (requests.length > 0) {
+      await this.sheets.spreadsheets.batchUpdate({ spreadsheetId: this.spreadsheetId, requestBody: { requests } });
     }
   }
 }

@@ -20,5 +20,7 @@ export interface QueueRepository {
     cardQueue: VisualQueueMember[],
     accessoryQueue: VisualQueueMember[]
   ): Promise<void>;
+  /** Deletes every Queue_History row for this Discord ID — used when a member leaves and all their data should go. */
+  deleteMemberHistory(discordId: string): Promise<void>;
   validateReadiness(): Promise<void>;
 }

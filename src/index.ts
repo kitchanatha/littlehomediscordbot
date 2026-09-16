@@ -99,7 +99,7 @@ discordClient.once(Events.ClientReady, async (readyClient) => {
       const guild = await readyClient.guilds.fetch(env.DISCORD_GUILD_ID);
       const members = await guild.members.fetch();
       const { leftCount } = await service.reconcileMembers(Array.from(members.keys()));
-      console.log(`✅ Reconciliation finished. Marked ${leftCount} members as Left.`);
+      console.log(`✅ Reconciliation finished. Removed ${leftCount} member(s) who left.`);
     } catch (error) {
       console.error("ERROR Reconciliation failed", error instanceof Error ? error.message : error);
     }

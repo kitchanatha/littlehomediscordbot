@@ -36,5 +36,11 @@ export interface AttendanceRepository {
    * never allowed to fail the real check-in this accompanies.
    */
   markRosterCheckin(characterName: string, status: AttendanceStatus, at: Date): Promise<void>;
+  /**
+   * Deletes a member's row(s) from the master attendance sheet and their class tab entirely
+   * (not just clearing a mark) — used when a member leaves and all their data should go, not
+   * just today's status.
+   */
+  deleteMemberAttendance(characterName: string, className: string): Promise<void>;
   validateReadiness(): Promise<void>;
 }

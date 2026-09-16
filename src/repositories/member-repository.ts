@@ -41,4 +41,10 @@ export interface MemberRepository {
   updateClassColorHex(className: string, colorHex: string): Promise<void>;
   recolorMembersByClass(className: string, colorHex: string): Promise<number>;
   recolorJadtiClass(className: string, colorHex: string): Promise<number>;
+  /**
+   * Deletes this member's row from Members entirely (not a status change), plus every
+   * Audit_Log row referencing them, the "Little Home member" row, and their name from the
+   * จัดตี้/หน้างานอีลิท team rosters — used when a member leaves and all their data should go.
+   */
+  deleteMemberCompletely(member: Member): Promise<void>;
 }

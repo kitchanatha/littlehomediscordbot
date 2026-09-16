@@ -366,4 +366,23 @@ export class GoogleSheetsQueueRepository implements QueueRepository {
       throw new Error(`Queue database is not initialized: missing sheet(s) ${missing.join(", ")}`);
     }
   }
+
+  async deleteMemberHistory(discordId: string): Promise<void> {
+    await this.ensureSheetIds();
+    const sheetId = this.sheetIds.get(SHEETS.queueHistory);
+    if (sheetId === undefined) return;
+
+    const rows = await this.values(`${SHEETS.queueHistory}!A2:J`);
+    const idxs = rows
+      .map((r, i) => ({ match: r[4] === discordId, i }))
+      .filter((x) => x.match)
+      .map((x) => x.i)
+      .sort((a, b) => b - a);
+    if (idxs.length === 0) return;
+
+    const requests = idxs.map((idx) => ({
+      deleteDimension: { range: { sheetId, dimension: "ROWS", startIndex: idx + 1, endIndex: idx + 2 } },
+    }));
+    await this.sheets.spreadsheets.batchUpdate({ spreadsheetId: this.spreadsheetId, requestBody: { requests } });
+  }
 }

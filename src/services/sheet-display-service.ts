@@ -17,6 +17,16 @@ const CLASS_TABS = [
   "Priest", "Monk", "Blacksmith", "Gunslinger", "Druid"
 ];
 
+// The three player-facing sheets here that aren't handled by a full row-delete elsewhere when a
+// member leaves (เช็คขาด-ลา and the CLASS_TABS get their whole row removed by
+// AttendanceRepository.deleteMemberAttendance instead, which also clears their date-column
+// history — more thorough than just blanking the name cell these two functions touch).
+const ROSTER_ONLY_SHEETS = [
+  "รายชื่อตี้วอร์ห้องหลัก",
+  "รายชื่ออีลิทตีอบอสวันอาทิตย์",
+  "ตี้วอร์วันอาทิตย์",
+];
+
 export class SheetDisplayService {
   constructor(
     private readonly memberRepository: MemberRepository,
@@ -37,6 +47,25 @@ export class SheetDisplayService {
     // But the requirement says "refresh all affected derived player displays".
     
     await this.refreshSheetsForMembers([targetMember]);
+  }
+
+  /** Blanks out every cell showing this character's name on the roster sheets not already
+   * covered by a full row-delete elsewhere — used when a member leaves and all their data
+   * should go. */
+  async clearMemberEverywhere(characterName: string): Promise<void> {
+    for (const sheetName of ROSTER_ONLY_SHEETS) {
+      try {
+        const cellLocations = await this.displayRepository.findPlayerCells(sheetName, [characterName]);
+        if (cellLocations.length === 0) continue;
+        const displaysToUpdate = cellLocations.map((loc) => ({
+          range: loc.range,
+          display: { text: "", className: "", symbol: "", colorHex: null },
+        }));
+        await this.displayRepository.refreshPlayerDisplays(sheetName, displaysToUpdate);
+      } catch (error) {
+        console.error(`ERROR Failed to clear ${characterName} from sheet ${sheetName}`, error);
+      }
+    }
   }
 
   async refreshAllDisplays(): Promise<void> {
