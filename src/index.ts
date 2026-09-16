@@ -1,4 +1,4 @@
-import { Events, MessageFlags } from "discord.js";
+import { EmbedBuilder, Events, MessageFlags } from "discord.js";
 import { handleAssign } from "./commands/assign.js";
 import { handleSetClassColor } from "./commands/set-class-color.js";
 import { handleHelp } from "./commands/help.js";
@@ -121,27 +121,31 @@ discordClient.on(Events.GuildMemberRemove, async (member) => {
   try {
     const removedMember = await service.handleGuildMemberRemove(member.id);
     if (removedMember && env.MEMBER_LEAVE_CHANNEL_ID) {
-      await announceMemberLeft(removedMember.characterName, member.guild.name, member.guild.memberCount);
+      await announceMemberLeft(removedMember.characterName, member.guild.name, member.guild.memberCount, member.user.displayAvatarURL({ size: 256 }));
     }
   } catch (err) {
     console.error(`ERROR Failed to handle guildMemberRemove for ${member.id}`, err);
   }
 });
 
-async function announceMemberLeft(characterName: string, guildName: string, memberCount: number): Promise<void> {
+async function announceMemberLeft(characterName: string, guildName: string, memberCount: number, avatarUrl: string): Promise<void> {
   try {
     const channel = await discordClient.channels.fetch(env.MEMBER_LEAVE_CHANNEL_ID);
     if (!channel || !channel.isTextBased() || !("send" in channel)) return;
-    await channel.send(
-      [
-        "🚪 ลาก่อน...",
-        "",
-        `**${characterName}** ได้ออกจาก ${guildName} แล้ว`,
-        "",
-        "หวังว่าจะได้พบกันอีกครั้ง ❤️",
-        `เหลือสมาชิก ${memberCount} | ${formatEventTime(new Date())}`,
-      ].join("\n")
-    );
+    const embed = new EmbedBuilder()
+      .setColor(0xed4245)
+      .setThumbnail(avatarUrl)
+      .setDescription(
+        [
+          "🚪 ลาก่อน...",
+          "",
+          `**${characterName}** ได้ออกจาก ${guildName} แล้ว`,
+          "",
+          "หวังว่าจะได้พบกันอีกครั้ง ❤️",
+          `เหลือสมาชิก ${memberCount} | ${formatEventTime(new Date())}`,
+        ].join("\n")
+      );
+    await channel.send({ embeds: [embed] });
   } catch (err) {
     console.error("ERROR Failed to post member-left announcement", err);
   }
@@ -154,25 +158,29 @@ discordClient.on(Events.GuildMemberAdd, async (member) => {
     console.error(`ERROR Failed to handle guildMemberAdd for ${member.id}`, err);
   });
   if (env.MEMBER_UPDATE_CHANNEL_ID) {
-    await announceMemberJoined(member.id, member.guild.name, member.guild.memberCount).catch((err) => {
+    await announceMemberJoined(member.id, member.guild.name, member.guild.memberCount, member.user.displayAvatarURL({ size: 256 })).catch((err) => {
       console.error(`ERROR Failed to post member-joined announcement for ${member.id}`, err);
     });
   }
 });
 
-async function announceMemberJoined(discordId: string, guildName: string, memberCount: number): Promise<void> {
+async function announceMemberJoined(discordId: string, guildName: string, memberCount: number, avatarUrl: string): Promise<void> {
   const channel = await discordClient.channels.fetch(env.MEMBER_UPDATE_CHANNEL_ID);
   if (!channel || !channel.isTextBased() || !("send" in channel)) return;
-  await channel.send(
-    [
-      "👋 ยินดีต้อนรับ!",
-      "",
-      `ยินดีต้อนรับ <@${discordId}> เข้าสู่ ${guildName}! 🎉`,
-      "",
-      "ขอให้สนุกกับการอยู่ในเซิร์ฟเวอร์ของเรา แนะนำตัวเอง เพื่อรับยศเข้ากลุ่ม",
-      `สมาชิกคนที่ ${memberCount} | ${formatEventTime(new Date())}`,
-    ].join("\n")
-  );
+  const embed = new EmbedBuilder()
+    .setColor(0x57f287)
+    .setThumbnail(avatarUrl)
+    .setDescription(
+      [
+        "👋 ยินดีต้อนรับ!",
+        "",
+        `ยินดีต้อนรับ <@${discordId}> เข้าสู่ ${guildName}! 🎉`,
+        "",
+        "ขอให้สนุกกับการอยู่ในเซิร์ฟเวอร์ของเรา แนะนำตัวเอง เพื่อรับยศเข้ากลุ่ม",
+        `สมาชิกคนที่ ${memberCount} | ${formatEventTime(new Date())}`,
+      ].join("\n")
+    );
+  await channel.send({ embeds: [embed] });
 }
 
 discordClient.on(Events.VoiceStateUpdate, async (oldState, newState) => {
