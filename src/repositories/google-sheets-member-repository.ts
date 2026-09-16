@@ -36,6 +36,11 @@ const JADTI_RANGE = "A1:H50";
 // formulas" situation as จัดตี้, so it needs the same rename/leave handling.
 const ELITE_SHEET = "หน้างานอีลิท";
 const ELITE_RANGE = "A1:H50";
+// War-party planning grids (main group Team A-C + second group Team ฟ้า/จอม/ปลด/ดินแดง) — same
+// typed-name-cell design as จัดตี้/หน้างานอีลิท, so they need the same rename/leave handling.
+const PARTY_TUE_SHEET = "ปาร์ตี้วันอังคาร";
+const PARTY_THU_SHEET = "ปาร์ตี้วันพฤหัส";
+const PARTY_RANGE = "A1:H60";
 const MEMBERS_COMBAT_POWER_COL = "K";
 const MEMBERS_COMBAT_POWER_COL_INDEX0 = 10; // K is the 11th column, 0-indexed 10
 
@@ -215,6 +220,8 @@ export class GoogleSheetsMemberRepository implements MemberRepository {
     for (const { sheet, range } of [
       { sheet: JADTI_SHEET, range: JADTI_RANGE },
       { sheet: ELITE_SHEET, range: ELITE_RANGE },
+      { sheet: PARTY_TUE_SHEET, range: PARTY_RANGE },
+      { sheet: PARTY_THU_SHEET, range: PARTY_RANGE },
     ]) {
       try {
         const rows = await this.values(`${sheet}!${range}`);
