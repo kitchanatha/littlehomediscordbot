@@ -120,8 +120,12 @@ discordClient.on(Events.GuildMemberRemove, async (member) => {
 
   try {
     const removedMember = await service.handleGuildMemberRemove(member.id);
-    if (removedMember && env.MEMBER_LEAVE_CHANNEL_ID) {
-      await announceMemberLeft(removedMember.characterName, member.guild.name, member.guild.memberCount, member.user.displayAvatarURL({ size: 256 }));
+    // Announce every departure, not just registered members — matches the join announcement,
+    // which already fires for everyone regardless of registration status. Falls back to their
+    // Discord display name when there's no registered character name to show.
+    if (env.MEMBER_LEAVE_CHANNEL_ID) {
+      const displayName = removedMember?.characterName ?? member.displayName ?? member.user.username;
+      await announceMemberLeft(displayName, member.guild.name, member.guild.memberCount, member.user.displayAvatarURL({ size: 256 }));
     }
   } catch (err) {
     console.error(`ERROR Failed to handle guildMemberRemove for ${member.id}`, err);
