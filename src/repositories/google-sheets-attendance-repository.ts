@@ -327,7 +327,14 @@ export class GoogleSheetsAttendanceRepository implements AttendanceRepository {
   }
 
   async getPresentTodayNormalizedNames(at: Date): Promise<Set<string>> {
-    const rows = await this.values(`${MASTER_SHEET}!A1:Z1200`);
+    // MASTER_SHEET gains a new date column every War, so a fixed "A1:Z" cap silently stops
+    // seeing new columns once the sheet grows past column Z (happened live: "War 20/9/69"
+    // landed at column AE and was invisible here, making the summary report everyone absent
+    // despite check-ins having actually been recorded). Read using the sheet's real width.
+    await this.ensureSheetIds();
+    const columnCount = this.sheetColumnCounts.get(MASTER_SHEET) ?? 26;
+    const lastCol = colLetter(Math.max(columnCount - 1, 25));
+    const rows = await this.values(`${MASTER_SHEET}!A1:${lastCol}1200`);
     const header = rows[0] ?? [];
     const dateCol = header.findIndex((h) => h && headerMatchesDate(h, at));
     if (dateCol < 0) return new Set();
