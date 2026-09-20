@@ -405,10 +405,13 @@ export async function handlePanelButton(
       try {
         const summary = await attendanceService.getWarSummary();
         const lines = [
-          `สมาชิกที่มาวอ ${summary.presentCount} คน และ สมาชิกที่ขาดวอ ${summary.missingCount} คน`,
+          `สมาชิกที่มาวอ ${summary.presentCount} คน, ลาวอ ${summary.leaveCount} คน และ ขาดวอ ${summary.absentCount} คน`,
+          "",
+          "รายชื่อสมาชิกที่ลาวอ",
+          summary.leaveNames.length > 0 ? summary.leaveNames.join(", ") : "- ไม่มี -",
           "",
           "รายชื่อสมาชิกที่ขาดวอ",
-          summary.missingNames.length > 0 ? summary.missingNames.join(", ") : "- ไม่มี -",
+          summary.absentNames.length > 0 ? summary.absentNames.join(", ") : "- ไม่มี -",
         ];
         await interaction.editReply("✅ Posted the summary.");
         await postAnnouncements(interaction.client, WAR_CHECKIN_CHANNEL_ID, chunkMessage(lines.join("\n"))).catch((err) =>

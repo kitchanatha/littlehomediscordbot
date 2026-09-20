@@ -29,6 +29,12 @@ export interface AttendanceRepository {
    */
   getPresentTodayNormalizedNames(at: Date): Promise<Set<string>>;
   /**
+   * Same as getPresentTodayNormalizedNames but also splits out members who marked "แจ้งลาแล้ว"
+   * (leave requested) for "today" — used to separate ขาดวอ (missing without notice) from ลาวอ
+   * (notified absence) in the War summary, instead of lumping both into one "missing" bucket.
+   */
+  getPresentAndLeaveTodayNormalizedNames(at: Date): Promise<{ present: Set<string>; leave: Set<string> }>;
+  /**
    * Mirrors a check-in/leave onto the separate "Little Home members" roster spreadsheet's
    * Members tab (a display snapshot, not part of this bot's own database). Silently skips (no
    * error) if the roster spreadsheet isn't configured or the character isn't found there. Callers

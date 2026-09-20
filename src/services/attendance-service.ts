@@ -70,15 +70,31 @@ export class AttendanceService {
       .sort((a, b) => a.characterName.localeCompare(b.characterName));
   }
 
-  /** Present/missing counts and names for the given date (defaults to today) — backs the "สรุปวอ" War summary button. */
-  async getWarSummary(at: Date = new Date()): Promise<{ presentCount: number; missingCount: number; missingNames: string[] }> {
-    const missing = await this.getMembersNeedingCheckIn(at);
-    const totalActive = await this.memberRepository.getAllActiveMembers();
-    return {
-      presentCount: totalActive.length - missing.length,
-      missingCount: missing.length,
-      missingNames: missing.map((m) => m.characterName),
-    };
+  /**
+   * Present / leave (ลาวอ, notified absence) / absent (ขาดวอ, missing without notice) counts and
+   * names for the given date (defaults to today) — backs the "สรุปวอ" War summary button.
+   */
+  async getWarSummary(
+    at: Date = new Date()
+  ): Promise<{ presentCount: number; leaveCount: number; absentCount: number; leaveNames: string[]; absentNames: string[] }> {
+    const [members, status] = await Promise.all([
+      this.memberRepository.getAllActiveMembers(),
+      this.attendanceRepository.getPresentAndLeaveTodayNormalizedNames(at),
+    ]);
+
+    let presentCount = 0;
+    const leaveNames: string[] = [];
+    const absentNames: string[] = [];
+    for (const m of members) {
+      const norm = normalizeName(m.characterName);
+      if (status.present.has(norm)) presentCount++;
+      else if (status.leave.has(norm)) leaveNames.push(m.characterName);
+      else absentNames.push(m.characterName);
+    }
+    leaveNames.sort((a, b) => a.localeCompare(b));
+    absentNames.sort((a, b) => a.localeCompare(b));
+
+    return { presentCount, leaveCount: leaveNames.length, absentCount: absentNames.length, leaveNames, absentNames };
   }
 
   /** Checks in a specific member by ID — used by the admin check-in panel's buttons. */

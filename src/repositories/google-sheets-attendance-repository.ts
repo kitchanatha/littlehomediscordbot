@@ -326,7 +326,10 @@ export class GoogleSheetsAttendanceRepository implements AttendanceRepository {
     return matches.map((m) => ({ status: m.status, at: m.at }));
   }
 
-  async getPresentTodayNormalizedNames(at: Date): Promise<Set<string>> {
+  // Shared read behind getPresentTodayNormalizedNames and getPresentAndLeaveTodayNormalizedNames
+  // — one Sheets read, categorized by each cell's actual status ("มา" vs "แจ้งลาแล้ว") instead of
+  // collapsing everyone-not-present into a single bucket.
+  private async getStatusTodayNormalizedNames(at: Date): Promise<{ present: Set<string>; leave: Set<string> }> {
     // MASTER_SHEET gains a new date column every War, so a fixed "A1:Z" cap silently stops
     // seeing new columns once the sheet grows past column Z (happened live: "War 20/9/69"
     // landed at column AE and was invisible here, making the summary report everyone absent
@@ -337,14 +340,25 @@ export class GoogleSheetsAttendanceRepository implements AttendanceRepository {
     const rows = await this.values(`${MASTER_SHEET}!A1:${lastCol}1200`);
     const header = rows[0] ?? [];
     const dateCol = header.findIndex((h) => h && headerMatchesDate(h, at));
-    if (dateCol < 0) return new Set();
+    if (dateCol < 0) return { present: new Set(), leave: new Set() };
 
     const present = new Set<string>();
+    const leave = new Set<string>();
     for (const row of rows.slice(1)) {
       const name = (row[MASTER_NAME_COL] ?? "").trim();
-      if (name && row[dateCol] === "มา") present.add(normalizeName(name));
+      if (!name) continue;
+      if (row[dateCol] === "มา") present.add(normalizeName(name));
+      else if (row[dateCol] === "แจ้งลาแล้ว") leave.add(normalizeName(name));
     }
-    return present;
+    return { present, leave };
+  }
+
+  async getPresentTodayNormalizedNames(at: Date): Promise<Set<string>> {
+    return (await this.getStatusTodayNormalizedNames(at)).present;
+  }
+
+  async getPresentAndLeaveTodayNormalizedNames(at: Date): Promise<{ present: Set<string>; leave: Set<string> }> {
+    return this.getStatusTodayNormalizedNames(at);
   }
 
   // Best-effort mirror onto the "Little Home member" display tab — errors here are caught by
