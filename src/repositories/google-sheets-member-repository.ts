@@ -43,6 +43,14 @@ const PARTY_THU_SHEET = "ปาร์ตี้วันพฤหัส";
 const PARTY_RANGE = "A1:H60";
 const MEMBERS_COMBAT_POWER_COL = "K";
 const MEMBERS_COMBAT_POWER_COL_INDEX0 = 10; // K is the 11th column, 0-indexed 10
+// Weekly Rating/Contribution tracker (see src/scripts/capture-guild-stats.ts) — History is an
+// append-only log (one row per member per capture date), Latest is a rebuilt-every-capture
+// compare-to-last-week view. Not part of SHEETS above (same reasoning as GAME_ROSTER_SHEET):
+// nice-to-have, shouldn't block the bot starting if missing.
+const GUILD_STATS_HISTORY_SHEET = "GuildStats_History";
+const GUILD_STATS_HISTORY_NAME_COL = 1; // column B
+const GUILD_STATS_LATEST_SHEET = "GuildStats_Latest";
+const GUILD_STATS_LATEST_NAME_COL = 0; // column A
 
 export class GoogleSheetsMemberRepository implements MemberRepository {
   private readonly sheets: sheets_v4.Sheets = sheetsClient;
@@ -845,6 +853,52 @@ export class GoogleSheetsMemberRepository implements MemberRepository {
 
     await this.removeFromDisplaySheet(member.characterName);
     await this.updateNameInTeamRosters(member.characterName, null);
+    await this.deleteGuildStats(member.characterName);
+  }
+
+  // Removes every GuildStats_History row for this character (all past weeks, not just the
+  // latest) and their GuildStats_Latest row, if those sheets exist — best-effort, matching the
+  // rest of deleteMemberCompletely's "erase all trace" behavior, but never allowed to fail the
+  // real deletion above since these sheets are optional/nice-to-have (see their const comments).
+  private async deleteGuildStats(characterName: string): Promise<void> {
+    try {
+      await this.ensureSheetIds();
+      const historySheetId = this.sheetIds.get(GUILD_STATS_HISTORY_SHEET);
+      if (historySheetId !== undefined) {
+        const historyRows = await this.values(`${GUILD_STATS_HISTORY_SHEET}!A2:E`);
+        const idxs = historyRows
+          .map((r, i) => ({ match: namesMatch(r[GUILD_STATS_HISTORY_NAME_COL] ?? "", characterName), i }))
+          .filter((x) => x.match)
+          .map((x) => x.i)
+          .sort((a, b) => b - a);
+        if (idxs.length > 0) {
+          await this.sheets.spreadsheets.batchUpdate({
+            spreadsheetId: this.spreadsheetId,
+            requestBody: {
+              requests: idxs.map((idx) => ({
+                deleteDimension: { range: { sheetId: historySheetId, dimension: "ROWS", startIndex: idx + 1, endIndex: idx + 2 } },
+              })),
+            },
+          });
+        }
+      }
+
+      const latestSheetId = this.sheetIds.get(GUILD_STATS_LATEST_SHEET);
+      if (latestSheetId !== undefined) {
+        const latestRows = await this.values(`${GUILD_STATS_LATEST_SHEET}!A2:G`);
+        const idx = latestRows.findIndex((r) => namesMatch(r[GUILD_STATS_LATEST_NAME_COL] ?? "", characterName));
+        if (idx >= 0) {
+          await this.sheets.spreadsheets.batchUpdate({
+            spreadsheetId: this.spreadsheetId,
+            requestBody: {
+              requests: [{ deleteDimension: { range: { sheetId: latestSheetId, dimension: "ROWS", startIndex: idx + 1, endIndex: idx + 2 } } }],
+            },
+          });
+        }
+      }
+    } catch (err) {
+      console.error(`WARN Failed to delete guild stats for "${characterName}"`, err);
+    }
   }
 
   async getAllMembers(): Promise<Member[]> {
