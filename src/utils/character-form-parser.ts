@@ -116,6 +116,20 @@ const CLASS_ALIASES: Record<string, string> = {
 
   "ดรูอิด": "Druid",
   "ดรูอิทสาว": "Druid",
+
+  "อัลเคมิสต์": "Alchemist",
+  "แอลเคมิสต์": "Alchemist",
+  "นักเล่นแร่": "Alchemist",
+  "biochemist": "Alchemist", // Alchemist's advanced job
+  "creator": "Alchemist",
+
+  "บาร์ด": "Bard",
+  "นักดนตรี": "Bard",
+  "clown": "Bard", // Bard's advanced job
+
+  "แดนเซอร์": "Dancer",
+  "นักเต้น": "Dancer",
+  "gypsy": "Dancer", // Dancer's advanced job
 };
 
 // Keyed by normalizeName(alias) so callers don't need to worry about case

@@ -19,6 +19,7 @@ const RAW_SHEET = "Game_Roster_CombatPower";
 const CLASS_TABS = [
   "Knight", "Paladin", "Hunter", "Assassin", "Wizard",
   "Priest", "Monk", "Blacksmith", "Gunslinger", "Druid",
+  "Alchemist", "Bard", "Dancer",
 ];
 const ATTENDANCE_SHEET = "เช็คขาด-ลา";
 const ATTENDANCE_NAME_COL = 1; // column B

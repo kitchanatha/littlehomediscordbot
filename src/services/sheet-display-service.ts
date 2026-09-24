@@ -14,7 +14,8 @@ const PLAYER_FACING_SHEETS = [
 
 const CLASS_TABS = [
   "Knight", "Paladin", "Hunter", "Assassin", "Wizard",
-  "Priest", "Monk", "Blacksmith", "Gunslinger", "Druid"
+  "Priest", "Monk", "Blacksmith", "Gunslinger", "Druid",
+  "Alchemist", "Bard", "Dancer"
 ];
 
 // The three player-facing sheets here that aren't handled by a full row-delete elsewhere when a
