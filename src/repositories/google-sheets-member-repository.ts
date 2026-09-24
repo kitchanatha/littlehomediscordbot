@@ -1041,20 +1041,22 @@ export class GoogleSheetsMemberRepository implements MemberRepository {
     return count;
   }
 
-  // จัดตี้'s class-based highlighting is baked-in literal colors on ~40 conditional-format
-  // rules (one per class per team block) — Sheets can't make a CUSTOM_FORMULA rule pull its
-  // color from another sheet, so a class-color change needs these rewritten in place.
+  // Every class-color roster (จัดตี้/ศึกชิงปราสาท, รายชื่อ Elite, both party-planning tabs,
+  // ตี้วอร์วันอาทิตย์, รายชื่อตี้วอร์ห้องหลัก, รายชื่ออีลิทตีอบอสวันอาทิตย์, War Plan (Draft),
+  // เช็คขาด-ลา, and every per-class attendance tab) uses baked-in literal colors on its
+  // conditional-format rules — Sheets can't make a CUSTOM_FORMULA rule pull its color from
+  // another sheet live, so a class-color change needs every matching rule rewritten in place.
+  // Scans ALL sheets rather than a hardcoded tab list, so this keeps working automatically for
+  // any future tab that gets the same class-color treatment.
   async recolorJadtiClass(className: string, colorHex: string): Promise<number> {
     const color = hexToRgb(colorHex);
     if (!color) return 0;
 
-    await this.ensureSheetIds();
-    const jadtiSheetId = this.sheetIds.get(JADTI_SHEET);
-    if (jadtiSheetId === undefined) return 0;
-
-    const meta = await this.sheets.spreadsheets.get({ spreadsheetId: this.spreadsheetId, includeGridData: false });
-    const jadti = meta.data.sheets?.find((s) => s.properties?.sheetId === jadtiSheetId);
-    const rules = jadti?.conditionalFormats ?? [];
+    const meta = await this.sheets.spreadsheets.get({
+      spreadsheetId: this.spreadsheetId,
+      includeGridData: false,
+      fields: "sheets(properties(sheetId),conditionalFormats)",
+    });
 
     // Matches the exact class-name comparison in formulas like
     // =AND(A3<>"",IFERROR(VLOOKUP(A3,$K:$O,2,FALSE),"")="Druid",...) — not a bare substring
@@ -1062,23 +1064,28 @@ export class GoogleSheetsMemberRepository implements MemberRepository {
     const marker = `)="${className}",`;
 
     const requests: sheets_v4.Schema$Request[] = [];
-    rules.forEach((rule, index) => {
-      const formula = rule.booleanRule?.condition?.values?.[0]?.userEnteredValue ?? "";
-      if (!formula.includes(marker)) return;
-      requests.push({
-        updateConditionalFormatRule: {
-          index,
-          sheetId: jadtiSheetId,
-          rule: {
-            ranges: rule.ranges,
-            booleanRule: {
-              condition: rule.booleanRule!.condition,
-              format: { backgroundColor: color, backgroundColorStyle: { rgbColor: color } },
+    for (const sheet of meta.data.sheets ?? []) {
+      const sheetId = sheet.properties?.sheetId;
+      if (sheetId === undefined || sheetId === null) continue;
+      const rules = sheet.conditionalFormats ?? [];
+      rules.forEach((rule, index) => {
+        const formula = rule.booleanRule?.condition?.values?.[0]?.userEnteredValue ?? "";
+        if (!formula.includes(marker)) return;
+        requests.push({
+          updateConditionalFormatRule: {
+            index,
+            sheetId,
+            rule: {
+              ranges: rule.ranges,
+              booleanRule: {
+                condition: rule.booleanRule!.condition,
+                format: { backgroundColor: color, backgroundColorStyle: { rgbColor: color } },
+              },
             },
           },
-        },
+        });
       });
-    });
+    }
 
     if (requests.length > 0) {
       await this.sheets.spreadsheets.batchUpdate({ spreadsheetId: this.spreadsheetId, requestBody: { requests } });

@@ -23,7 +23,7 @@ export async function handleSetClassColor(interaction: ChatInputCommandInteracti
     const result = await service.setClassColor(className, hex);
     await interaction.editReply(
       `✅ **${result.className}** color set to \`${result.colorHex}\`.\n` +
-        `Repainted ${result.membersRecolored} member row(s) and ${result.jadtiRulesUpdated} จัดตี้ rule(s).`
+        `Repainted ${result.membersRecolored} member row(s) and ${result.jadtiRulesUpdated} conditional-format rule(s) across the spreadsheet.`
     );
     console.log(`INFO Class color changed: ${result.className} -> ${result.colorHex} by ${interaction.user.id}`);
   } catch (error) {
