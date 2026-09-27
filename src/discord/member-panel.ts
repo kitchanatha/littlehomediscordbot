@@ -158,16 +158,10 @@ export function buildQueueOnlyMessage() {
   const embed = new EmbedBuilder()
     .setTitle("🎟️ Item Queue / คิวไอเทม")
     .setColor(0x5865f2)
-    .setDescription(
-      [
-        "**Card Queue** / **Accessory Queue** — join that queue / เข้าคิวการ์ดหรือคิวประดับ",
-        "**ได้รับของประมูลแล้ว** — leave the queue once you've received your item / ออกจากคิวเมื่อได้รับของแล้ว",
-      ].join("\n")
-    );
+    .setDescription("**Card Queue** / **Accessory Queue** — join that queue / เข้าคิวการ์ดหรือคิวประดับ");
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.queueCard).setLabel("เข้าคิวการ์ด").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.queueAccessory).setLabel("เข้าคิวประดับ").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.queueLeave).setLabel("🎁 ได้รับของประมูลแล้ว").setStyle(ButtonStyle.Success)
+    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.queueAccessory).setLabel("เข้าคิวประดับ").setStyle(ButtonStyle.Secondary)
   );
   return { embeds: [embed], components: [row] };
 }
