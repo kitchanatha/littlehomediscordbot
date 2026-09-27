@@ -55,9 +55,9 @@ export const PANEL_BUTTON_IDS = {
 } as const;
 
 const WAR_CHECKIN_CHANNEL_ID = "1545473984928424036"; // 📌เช็คอิน
-const QUEUE_CHANNEL_ID = "1547631556527398932"; // 💎จองคิวประมูล
+export const QUEUE_CHANNEL_ID = "1547631556527398932"; // 💎จองคิวประมูล
 
-function formatAnnounceDate(at: Date): string {
+export function formatAnnounceDate(at: Date): string {
   return `${at.getDate()}/${at.getMonth() + 1}/${at.getFullYear()}`;
 }
 

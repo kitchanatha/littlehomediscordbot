@@ -4,6 +4,12 @@ import { QueueType } from "../types/queue.js";
 import { UserError } from "../services/member-service.js";
 import { env } from "../config/env.js";
 import type { ClassService } from "../services/class-service.js";
+import { postAnnouncement } from "../discord/sticky-panels.js";
+import { QUEUE_CHANNEL_ID, formatAnnounceDate } from "../discord/member-panel.js";
+
+function queueLabel(type: QueueType): string {
+  return type === "Card" ? "การ์ด" : "ประดับ";
+}
 
 export async function handleQueueJoin(interaction: ChatInputCommandInteraction, service: QueueService) {
   const type = interaction.options.getString("type", true) as QueueType;
@@ -19,6 +25,11 @@ export async function handleQueueJoin(interaction: ChatInputCommandInteraction, 
     await interaction.editReply({
       content: `✅ Joined ${type} queue.\nPosition: #${entry.position}`,
     });
+
+    const member = await service.getMemberByDiscordId(discordId);
+    if (member) {
+      await postAnnouncement(interaction.client, QUEUE_CHANNEL_ID, `${member.characterName} ได้เข้าคิว${queueLabel(type)}แล้ว`);
+    }
   } catch (error: any) {
     if (error instanceof UserError) {
       await interaction.editReply({ content: error.message });
@@ -44,6 +55,15 @@ export async function handleQueueLeave(interaction: ChatInputCommandInteraction,
     await interaction.editReply({
       content: `✅ Left ${type} queue.\nYou can join this queue again after ${cooldownDate.toLocaleString()}.`,
     });
+
+    const member = await service.getMemberByDiscordId(discordId);
+    if (member) {
+      await postAnnouncement(
+        interaction.client,
+        QUEUE_CHANNEL_ID,
+        `${member.characterName} ได้รับ ${queueLabel(type)} แล้ว จะสามารถเข้าคิวได้อีกที ${formatAnnounceDate(cooldownDate)}`
+      );
+    }
   } catch (error: any) {
     if (error instanceof UserError) {
       await interaction.editReply({ content: error.message });
@@ -146,6 +166,11 @@ export async function handleQueueAdd(interaction: ChatInputCommandInteraction, s
     await interaction.editReply({
       content: `✅ Added ${targetUser.toString()} to ${type} queue.\nPosition: #${entry.position}`,
     });
+
+    const member = await service.getMemberByDiscordId(targetUser.id);
+    if (member) {
+      await postAnnouncement(interaction.client, QUEUE_CHANNEL_ID, `${member.characterName} ได้เข้าคิว${queueLabel(type)}แล้ว`);
+    }
   } catch (error: any) {
     if (error instanceof UserError) {
       await interaction.editReply({ content: error.message });
@@ -179,6 +204,15 @@ export async function handleQueueRemove(interaction: ChatInputCommandInteraction
     await interaction.editReply({
       content: `✅ Removed ${targetUser.toString()} from ${type} queue.\nCooldown until: ${cooldownDate.toLocaleString()}`,
     });
+
+    const member = await service.getMemberByDiscordId(targetUser.id);
+    if (member) {
+      await postAnnouncement(
+        interaction.client,
+        QUEUE_CHANNEL_ID,
+        `${member.characterName} ได้รับ ${queueLabel(type)} แล้ว จะสามารถเข้าคิวได้อีกที ${formatAnnounceDate(cooldownDate)}`
+      );
+    }
   } catch (error: any) {
     if (error instanceof UserError) {
       await interaction.editReply({ content: error.message });
