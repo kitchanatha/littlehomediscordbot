@@ -116,4 +116,9 @@ export const commandDefinitions = [
         .setRequired(true)
         .addChoices({ name: "Card", value: "Card" }, { name: "Accessory", value: "Accessory" })
     ),
+  new SlashCommandBuilder()
+    .setName("upload_item_image")
+    .setDescription("Add an item's name + icon to the shared auction item catalog (Admin only)")
+    .addStringOption((o) => o.setName("name").setDescription("Item name, e.g. \"Fierce\"").setRequired(true))
+    .addAttachmentOption((o) => o.setName("image").setDescription("Item icon image").setRequired(true)),
 ].map((c) => c.toJSON());

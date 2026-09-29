@@ -33,6 +33,19 @@ const schema = z.object({
   // applies it to their own registered profile automatically. Requires "Message Content
   // Intent" in the Discord Developer Portal. Leave blank to disable.
   NAME_CLASS_CHANGE_CHANNEL_ID: z.string().optional().default(""),
+  // Lets /upload_item_image reach the guild-item-reservation site's Supabase project, so an
+  // admin can add an item's name+icon to the shared catalog from Discord instead of only the
+  // website's admin panel. All three must be set together or the command stays disabled.
+  //   SUPABASE_FUNCTIONS_URL: e.g. https://<project-ref>.supabase.co/functions/v1
+  //   SUPABASE_ANON_KEY: the project's public anon/publishable key (not secret — same one the
+  //     website ships in its own source)
+  //   BOT_SHARED_SECRET: must match the same secret set on the queue-bridge Edge Function
+  //     (`supabase secrets set BOT_SHARED_SECRET=...`) — this is what actually authorizes the
+  //     write; Discord's admin-role check happens first, but the Edge Function checks again
+  //     server-side rather than trusting the bot's gate alone.
+  SUPABASE_FUNCTIONS_URL: z.string().optional().default(""),
+  SUPABASE_ANON_KEY: z.string().optional().default(""),
+  BOT_SHARED_SECRET: z.string().optional().default(""),
 });
 
 const parsed = schema.safeParse(process.env);
@@ -53,4 +66,7 @@ export const env = {
   MEMBER_UPDATE_CHANNEL_ID: parsed.data.MEMBER_UPDATE_CHANNEL_ID.trim(),
   MEMBER_LEAVE_CHANNEL_ID: parsed.data.MEMBER_LEAVE_CHANNEL_ID.trim(),
   NAME_CLASS_CHANGE_CHANNEL_ID: parsed.data.NAME_CLASS_CHANGE_CHANNEL_ID.trim(),
+  SUPABASE_FUNCTIONS_URL: parsed.data.SUPABASE_FUNCTIONS_URL.trim().replace(/\/$/, ""),
+  SUPABASE_ANON_KEY: parsed.data.SUPABASE_ANON_KEY.trim(),
+  BOT_SHARED_SECRET: parsed.data.BOT_SHARED_SECRET.trim(),
 };

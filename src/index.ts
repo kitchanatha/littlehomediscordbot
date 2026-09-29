@@ -1,6 +1,7 @@
 import { EmbedBuilder, Events, MessageFlags } from "discord.js";
 import { handleAssign } from "./commands/assign.js";
 import { handleSetClassColor } from "./commands/set-class-color.js";
+import { handleUploadItemImage } from "./commands/upload-item-image.js";
 import { handleHelp } from "./commands/help.js";
 import {
   handlePanelButton,
@@ -394,6 +395,9 @@ discordClient.on(Events.InteractionCreate, async (interaction) => {
         break;
       case "queue_remove":
         await handleQueueRemove(interaction, queueService);
+        break;
+      case "upload_item_image":
+        await handleUploadItemImage(interaction);
         break;
       case "war_checkin":
         await handleWarCheckin(interaction, attendanceService);
