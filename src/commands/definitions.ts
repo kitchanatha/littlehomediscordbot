@@ -117,8 +117,12 @@ export const commandDefinitions = [
         .addChoices({ name: "Card", value: "Card" }, { name: "Accessory", value: "Accessory" })
     ),
   new SlashCommandBuilder()
+    .setName("upload_auction_page")
+    .setDescription("Add items to the shared catalog by uploading a Guild Auction page screenshot — names read automatically (Admin only)")
+    .addAttachmentOption((o) => o.setName("image").setDescription("Screenshot of the Guild Auction list (up to 4 items)").setRequired(true)),
+  new SlashCommandBuilder()
     .setName("upload_item_image")
-    .setDescription("Add an item's name + icon to the shared auction item catalog (Admin only)")
+    .setDescription("Manually add one item's name + icon to the shared catalog (Admin only)")
     .addStringOption((o) => o.setName("name").setDescription("Item name, e.g. \"Fierce\"").setRequired(true))
     .addAttachmentOption((o) => o.setName("image").setDescription("Item icon image").setRequired(true)),
 ].map((c) => c.toJSON());

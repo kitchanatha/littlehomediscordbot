@@ -43,7 +43,8 @@ const SECTIONS: { title: string; commands: Entry[] }[] = [
       { name: "assign", description: "Assign a member's Team and Party / กำหนดทีมและปาร์ตี้ให้สมาชิก" },
       { name: "queue_add", description: "Add a member to a queue / เพิ่มสมาชิกเข้าคิว" },
       { name: "queue_remove", description: "Remove a member from a queue / เอาสมาชิกออกจากคิว" },
-      { name: "upload_item_image", description: "Add an item's name + icon to the shared item catalog / เพิ่มชื่อและรูปไอเทมเข้าคลัง" },
+      { name: "upload_auction_page", description: "Add items to the catalog from an auction page screenshot / เพิ่มไอเทมเข้าคลังจากภาพหน้าประมูล" },
+      { name: "upload_item_image", description: "Manually add one item's name + icon to the catalog / เพิ่มชื่อและรูปไอเทมเข้าคลังด้วยตนเอง" },
     ],
   },
 ];
