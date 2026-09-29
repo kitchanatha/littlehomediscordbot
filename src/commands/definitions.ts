@@ -118,7 +118,7 @@ export const commandDefinitions = [
     ),
   new SlashCommandBuilder()
     .setName("upload_auction_page")
-    .setDescription("Add items to the shared catalog by uploading a Guild Auction page screenshot — names read automatically (Admin only)")
+    .setDescription("Add items to the catalog from a Guild Auction page screenshot (Admin only)")
     .addAttachmentOption((o) => o.setName("image").setDescription("Screenshot of the Guild Auction list (up to 4 items)").setRequired(true)),
   new SlashCommandBuilder()
     .setName("upload_item_image")
