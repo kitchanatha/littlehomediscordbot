@@ -102,8 +102,31 @@ export class GoogleSheetsDisplayRepository implements SheetDisplayRepository {
     const results: { range: string; characterName: string }[] = [];
     const nameSet = new Set(characterNames);
 
+    // Some roster tabs carry a hidden helper lookup table (=ARRAYFORMULA(Members!D1:H…), 5 columns
+    // wide) that the class-color rules read from. It lists every member name, so without this skip
+    // the refresh would "find" those cells and overwrite them with plain text — which blocks the
+    // formula's spill (#REF!) and turns every name on the tab gray. Spilled cells show values, not
+    // formulas, so locate the table by its anchor formula in the top rows.
+    const formulaRows =
+      (
+        await this.sheets.spreadsheets.values.get({
+          spreadsheetId: this.spreadsheetId,
+          range: `${sheetName}!A1:Z3`,
+          valueRenderOption: "FORMULA",
+        })
+      ).data.values || [];
+    let helperStart = -1;
+    for (const row of formulaRows) {
+      const idx = row.findIndex((cell) => /^=ARRAYFORMULA\(\s*Members!/i.test(String(cell ?? "")));
+      if (idx >= 0) {
+        helperStart = idx;
+        break;
+      }
+    }
+
     for (let r = 0; r < values.length; r++) {
       for (let c = 0; c < values[r].length; c++) {
+        if (helperStart >= 0 && c >= helperStart && c < helperStart + 5) continue;
         const cellValue = String(values[r][c] || "").trim();
         // Check if cell contains the name (might have symbol already or be just the name)
         for (const name of nameSet) {
