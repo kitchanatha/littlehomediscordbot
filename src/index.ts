@@ -197,6 +197,11 @@ discordClient.on(Events.VoiceStateUpdate, async (oldState, newState) => {
   if (!joinedChannelId || !env.WAR_CHECKIN_VOICE_CHANNEL_IDS.includes(joinedChannelId)) return;
   if (oldState.channelId === newState.channelId) return; // not an actual join (e.g. mute/deafen toggle)
 
+  // The guild only holds war on Tuesday, Thursday and Sunday; a voice join on any other day is
+  // just someone hanging out and would otherwise create a stray date column on the attendance tab.
+  const bangkokWeekday = new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: "Asia/Bangkok" }).format(new Date());
+  if (!["Tue", "Thu", "Sun"].includes(bangkokWeekday)) return;
+
   try {
     const result = await attendanceService.checkIn(newState.id);
     console.log(`INFO Auto check-in via voice: ${result.characterName} marked present for ${result.dateLabel}`);
