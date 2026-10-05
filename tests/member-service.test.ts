@@ -156,6 +156,21 @@ describe("MemberService", () => {
       .rejects.toThrow("/name_class");
   });
 
+  it("registers only once when the same user's /register calls overlap", async () => {
+    // Sheets calls take real time; a double click lands both calls before either row is written.
+    class SlowRepo extends FakeRepo {
+      async findByDiscordId(discordId: string) { await new Promise((r) => setTimeout(r, 5)); return super.findByDiscordId(discordId); }
+      async createMember(m: Member) { await new Promise((r) => setTimeout(r, 5)); return super.createMember(m); }
+    }
+    const repo = new SlowRepo();
+    const { service } = createServices(repo);
+    const input = { discordId: "789", discordUsername: "dbl", characterName: "Dbl", className: "Knight" };
+    const results = await Promise.allSettled([service.register(input), service.register(input)]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter((r) => r.status === "rejected")).toHaveLength(1);
+    expect(repo.members.filter((m) => m.discordId === "789")).toHaveLength(1);
+  });
+
   it("validates class against active classes", async () => {
     const repo = new FakeRepo();
     const { service } = createServices(repo);

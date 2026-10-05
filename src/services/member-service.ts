@@ -44,10 +44,13 @@ export class MemberService {
   }
 
   async register(input: { discordId: string; discordUsername: string; characterName: string; className: string }): Promise<{ member: Member }> {
-    const existing = await this.repository.findByDiscordId(input.discordId);
-    if (existing) {
-      throw new UserError("❌ You are already registered. Use /name_class to update your profile.\n❌ คุณลงทะเบียนแล้ว หากต้องการแก้ไขข้อมูลให้ใช้ /name_class");
-    }
+    const alreadyRegistered = () =>
+      new UserError("❌ You are already registered. Use /name_class to update your profile.\n❌ คุณลงทะเบียนแล้ว หากต้องการแก้ไขข้อมูลให้ใช้ /name_class");
+
+    // Quick rejection for the common case; the authoritative check is repeated inside the lock
+    // below, because two near-simultaneous /register calls from one user (double click, retry)
+    // can both pass this one before either has written its row.
+    if (await this.repository.findByDiscordId(input.discordId)) throw alreadyRegistered();
 
     const classes = await this.getActiveClasses();
     const className = input.className.trim();
@@ -57,6 +60,8 @@ export class MemberService {
     }
 
     const member = await this.withRegisterLock(async () => {
+      if (await this.repository.findByDiscordId(input.discordId)) throw alreadyRegistered();
+
       const existingIds = await this.repository.getAllMemberIds();
       const memberId = generateNextId("M", existingIds);
 
