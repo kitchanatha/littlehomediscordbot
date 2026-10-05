@@ -71,8 +71,8 @@ export class AttendanceService {
   }
 
   /**
-   * Present / leave (ลาวอ, notified absence) / absent (ขาดวอ, missing without notice) counts and
-   * names for the given date (defaults to today) — backs the "สรุปวอ" War summary button.
+   * Present / leave (ลาวอร์, notified absence) / absent (ขาดวอร์, missing without notice) counts and
+   * names for the given date (defaults to today) — backs the "สรุปวอร์" War summary button.
    */
   async getWarSummary(
     at: Date = new Date()

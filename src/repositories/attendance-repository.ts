@@ -30,7 +30,7 @@ export interface AttendanceRepository {
   getPresentTodayNormalizedNames(at: Date): Promise<Set<string>>;
   /**
    * Same as getPresentTodayNormalizedNames but also splits out members who marked "แจ้งลาแล้ว"
-   * (leave requested) for "today" — used to separate ขาดวอ (missing without notice) from ลาวอ
+   * (leave requested) for "today" — used to separate ขาดวอร์ (missing without notice) from ลาวอร์
    * (notified absence) in the War summary, instead of lumping both into one "missing" bucket.
    */
   getPresentAndLeaveTodayNormalizedNames(at: Date): Promise<{ present: Set<string>; leave: Set<string> }>;

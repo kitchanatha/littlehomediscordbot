@@ -112,7 +112,7 @@ export function buildWarCheckinOnlyMessage() {
         "Click below to mark yourself present for today's War.\nคลิกด้านล่างเพื่อเช็คอินวอร์วันนี้",
         "สามารถเช็คอินได้ตั้งแต่ 05.00-สิ้นสุดวอร์",
         "",
-        "**สรุปวอ** — Admin/Guild Leader only: posts a summary of who has and hasn't checked in.",
+        "**สรุปวอร์** — Admin/Guild Leader only: posts a summary of who has and hasn't checked in.",
       ].join("\n")
     );
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -128,7 +128,7 @@ export function buildWarLeaveOnlyMessage() {
     .setColor(0xed4245)
     .setDescription("Click below to let the guild know you can't make today's War.\nคลิกด้านล่างเพื่อแจ้งลาวอร์วันนี้");
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.warLeave).setLabel("😷 ลาวอ").setStyle(ButtonStyle.Danger)
+    new ButtonBuilder().setCustomId(PANEL_BUTTON_IDS.warLeave).setLabel("😷 ลาวอร์").setStyle(ButtonStyle.Danger)
   );
   return { embeds: [embed], components: [row] };
 }
@@ -375,7 +375,7 @@ export async function handlePanelButton(
           await postAnnouncement(
             interaction.client,
             env.WAR_LEAVE_CHANNEL_ID,
-            `${result.characterName} ลาวอวันที่ ${formatAnnounceDate(new Date())}`
+            `${result.characterName} ลาวอร์วันที่ ${formatAnnounceDate(new Date())}`
           ).catch((err) => console.error("ERROR Failed to post war leave announcement", err));
         }
       } catch (error) {
@@ -400,12 +400,12 @@ export async function handlePanelButton(
       try {
         const summary = await attendanceService.getWarSummary();
         const lines = [
-          `สมาชิกที่มาวอ ${summary.presentCount} คน, ลาวอ ${summary.leaveCount} คน และ ขาดวอ ${summary.absentCount} คน`,
+          `สมาชิกที่มาวอร์ ${summary.presentCount} คน, ลาวอร์ ${summary.leaveCount} คน และ ขาดวอร์ ${summary.absentCount} คน`,
           "",
-          "รายชื่อสมาชิกที่ลาวอ",
+          "รายชื่อสมาชิกที่ลาวอร์",
           summary.leaveNames.length > 0 ? summary.leaveNames.join(", ") : "- ไม่มี -",
           "",
-          "รายชื่อสมาชิกที่ขาดวอ",
+          "รายชื่อสมาชิกที่ขาดวอร์",
           summary.absentNames.length > 0 ? summary.absentNames.join(", ") : "- ไม่มี -",
         ];
         await interaction.editReply("✅ Posted the summary.");
