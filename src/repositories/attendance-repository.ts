@@ -12,6 +12,17 @@ export interface AttendanceRepository {
     at: Date
   ): Promise<AttendanceResult>;
   /**
+   * Closes out a War day: writes "ขาด" into every listed member's cell for that day's column
+   * (master tab and their class tab) that is still blank — i.e. they neither checked in ("มา")
+   * nor notified a leave ("แจ้งลาแล้ว"). Never overwrites an existing mark, so it is safe to run
+   * more than once. `day` is any instant that falls on the War day in Bangkok time. Creates the
+   * day's column / a member's row if they don't exist yet. Returns how many cells were written.
+   */
+  markAbsentForWarDay(
+    day: Date,
+    members: { characterName: string; className: string }[]
+  ): Promise<{ master: number; classTabs: number }>;
+  /**
    * Records a check-in for a Discord user who isn't registered yet — kept separate from the
    * player-facing attendance sheets (which should only ever show real character names) until
    * they register and it can be resolved into a real name. Deduped per discordId per calendar

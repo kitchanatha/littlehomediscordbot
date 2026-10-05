@@ -2,6 +2,7 @@ import type { MemberRepository } from "../repositories/member-repository.js";
 import type { AttendanceRepository } from "../repositories/attendance-repository.js";
 import type { Member } from "../types/member.js";
 import { normalizeName } from "../utils/normalize.js";
+import { bangkokEndOfDay, bangkokNoon, type BangkokDay } from "../utils/war-window.js";
 import { UserError } from "./member-service.js";
 
 export class AttendanceService {
@@ -133,6 +134,25 @@ export class AttendanceService {
       }
     }
     return checkedIn;
+  }
+
+  /**
+   * Closes out a War day: every Active member who had already joined by the end of that day and
+   * has neither checked in nor notified a leave gets "ขาด" (marked red on the sheet). Members who
+   * registered after the War ended are not held absent for it. Idempotent — only blank cells are
+   * written — so it is safe to run again after a restart.
+   */
+  async finalizeWarDay(day: BangkokDay): Promise<{ eligible: number; master: number; classTabs: number }> {
+    const endOfDay = bangkokEndOfDay(day).getTime();
+    const members = (await this.memberRepository.getAllActiveMembers()).filter((m) => {
+      const joined = Date.parse(m.joinedDate);
+      return Number.isNaN(joined) || joined <= endOfDay;
+    });
+    const result = await this.attendanceRepository.markAbsentForWarDay(
+      bangkokNoon(day),
+      members.map((m) => ({ characterName: m.characterName, className: m.className }))
+    );
+    return { eligible: members.length, ...result };
   }
 
   /** Deletes a member's rows from the master attendance sheet and their class tab — used when they leave and all their data should go. */

@@ -42,6 +42,7 @@ import { QueueService } from "./services/queue-service.js";
 import { WarRosterService } from "./services/war-roster-service.js";
 import { SheetDisplayService } from "./services/sheet-display-service.js";
 import { AttendanceService } from "./services/attendance-service.js";
+import { startWarFinalizer } from "./services/war-finalizer.js";
 import { GoogleSheetsDisplayRepository } from "./repositories/display-repository.js";
 import { parseCharacterForm, resolveClassName } from "./utils/character-form-parser.js";
 import { parseNameClassChange } from "./utils/name-class-change-parser.js";
@@ -95,6 +96,9 @@ discordClient.once(Events.ClientReady, async (readyClient) => {
   console.log(`INFO Bot ready as ${readyClient.user.tag}`);
 
   await initStickyPanels(readyClient, STICKY_PANELS);
+
+  // After each War day ends, anyone who never checked in or sent a leave is marked ขาด.
+  startWarFinalizer(attendanceService);
 
   if (env.ENABLE_MEMBERS_INTENT) {
     try {

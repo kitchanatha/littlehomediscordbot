@@ -3,6 +3,7 @@ import { env } from "../config/env.js";
 import { sheetsClient } from "../google/sheets-client.js";
 import { coreName, namesMatch, normalizeName } from "../utils/normalize.js";
 import { withSheetDeleteLock } from "../utils/sheet-lock.js";
+import { bangkokDay } from "../utils/war-window.js";
 import type { AttendanceRepository } from "./attendance-repository.js";
 import type { AttendanceResult, AttendanceStatus } from "../types/attendance.js";
 
@@ -42,11 +43,11 @@ function colLetter(index0: number): string {
   return s;
 }
 
+// The War column is named for the Bangkok calendar day. The server runs in UTC, so reading the
+// local date here would file a check-in made between 05:00 and 06:59 Bangkok under the day before.
 function buddhistParts(date: Date): { d: number; m: number; yy: number } {
-  const d = date.getDate();
-  const m = date.getMonth() + 1;
-  const buddhistYear = date.getFullYear() + 543;
-  return { d, m, yy: buddhistYear % 100 };
+  const { year, month, day } = bangkokDay(date);
+  return { d: day, m: month, yy: (year + 543) % 100 };
 }
 
 // The guild's existing headers are inconsistently typed ("war 31/7/69", "War  13/8/69", ...).
@@ -257,6 +258,75 @@ export class GoogleSheetsAttendanceRepository implements AttendanceRepository {
     return { dateLabel, markedMaster, markedClassTab };
   }
 
+  // Fills "ขาด" into every blank cell of `at`'s War column for the given names on one tab.
+  // Existing marks (มา / แจ้งลาแล้ว / ขาด) are left untouched.
+  private async fillAbsent(sheetName: string, nameCol: number, firstDateCol: number, names: string[], at: Date): Promise<number> {
+    if (names.length === 0) return 0;
+    await this.ensureSheetIds();
+    const sheetId = this.sheetIds.get(sheetName);
+    if (sheetId === undefined) return 0;
+
+    const dateCol = await this.findOrCreateDateColumn(sheetName, sheetId, firstDateCol, at);
+    const nameLetter = colLetter(nameCol);
+    const dateLetter = colLetter(dateCol);
+    const [nameRes, dateRes] = await Promise.all([
+      this.values(`${sheetName}!${nameLetter}2:${nameLetter}`),
+      this.values(`${sheetName}!${dateLetter}2:${dateLetter}`),
+    ]);
+    const sheetNames = nameRes.map((r) => r[0] ?? "");
+
+    const rowFor = (name: string): number | null => {
+      const exact = sheetNames.findIndex((v) => normalizeName(v) === normalizeName(name));
+      if (exact >= 0) return exact + 2;
+      const core = coreName(name);
+      const loose = core ? sheetNames.findIndex((v) => coreName(v) === core) : -1;
+      return loose >= 0 ? loose + 2 : null;
+    };
+
+    const rows = new Set<number>();
+    for (const name of names) {
+      let row = rowFor(name);
+      if (row === null) {
+        // Active member with no row on this tab yet — add it, then it is simply a blank cell.
+        row = await this.findOrCreateNameRow(sheetName, sheetId, nameCol, name);
+      }
+      const current = (dateRes[row - 2]?.[0] ?? "").trim();
+      if (!current) rows.add(row);
+    }
+    if (rows.size === 0) return 0;
+
+    await this.sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId: this.spreadsheetId,
+      requestBody: {
+        valueInputOption: "RAW",
+        data: [...rows].map((row) => ({ range: `${sheetName}!${dateLetter}${row}`, values: [["ขาด"]] })),
+      },
+    });
+    return rows.size;
+  }
+
+  async markAbsentForWarDay(
+    day: Date,
+    members: { characterName: string; className: string }[]
+  ): Promise<{ master: number; classTabs: number }> {
+    const master = await this.fillAbsent(MASTER_SHEET, MASTER_NAME_COL, MASTER_FIRST_DATE_COL, members.map((m) => m.characterName), day);
+
+    let classTabs = 0;
+    const byClass = new Map<string, string[]>();
+    for (const m of members) {
+      if (!m.className) continue;
+      byClass.set(m.className, [...(byClass.get(m.className) ?? []), m.characterName]);
+    }
+    for (const [className, names] of byClass) {
+      try {
+        classTabs += await this.fillAbsent(className, CLASS_NAME_COL, CLASS_FIRST_DATE_COL, names, day);
+      } catch (error) {
+        console.error(`ERROR Failed to mark absences on class tab "${className}"`, error);
+      }
+    }
+    return { master, classTabs };
+  }
+
   private async ensurePendingSheetExists(): Promise<number> {
     await this.ensureSheetIds();
     let sheetId = this.sheetIds.get(PENDING_SHEET);
@@ -281,14 +351,15 @@ export class GoogleSheetsAttendanceRepository implements AttendanceRepository {
   }
 
   private isoDay(at: Date): string {
-    return at.toISOString().slice(0, 10);
+    const { year, month, day } = bangkokDay(at);
+    return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
   }
 
   async recordPendingCheckIn(discordId: string, displayName: string, status: AttendanceStatus, at: Date): Promise<void> {
     await this.ensurePendingSheetExists();
     const rows = (await this.values(`${PENDING_SHEET}!A2:E`));
     const today = this.isoDay(at);
-    const alreadyRecorded = rows.some((r) => r[0] === discordId && (r[2] ?? "").slice(0, 10) === today);
+    const alreadyRecorded = rows.some((r) => r[0] === discordId && r[2] && this.isoDay(new Date(r[2])) === today);
     if (alreadyRecorded) return;
 
     await this.sheets.spreadsheets.values.append({
