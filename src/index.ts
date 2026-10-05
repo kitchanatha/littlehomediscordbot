@@ -3,6 +3,7 @@ import { handleAssign } from "./commands/assign.js";
 import { handleSetClassColor } from "./commands/set-class-color.js";
 import { handleUploadItemImage } from "./commands/upload-item-image.js";
 import { handleUploadAuctionPage } from "./commands/upload-auction-page.js";
+import { isWarCheckInOpen } from "./utils/war-window.js";
 import { handleHelp } from "./commands/help.js";
 import {
   handlePanelButton,
@@ -197,10 +198,9 @@ discordClient.on(Events.VoiceStateUpdate, async (oldState, newState) => {
   if (!joinedChannelId || !env.WAR_CHECKIN_VOICE_CHANNEL_IDS.includes(joinedChannelId)) return;
   if (oldState.channelId === newState.channelId) return; // not an actual join (e.g. mute/deafen toggle)
 
-  // The guild only holds war on Tuesday, Thursday and Sunday; a voice join on any other day is
-  // just someone hanging out and would otherwise create a stray date column on the attendance tab.
-  const bangkokWeekday = new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: "Asia/Bangkok" }).format(new Date());
-  if (!["Tue", "Thu", "Sun"].includes(bangkokWeekday)) return;
+  // Same window as the check-in button: a voice join outside it is just someone hanging out and
+  // would otherwise create a stray date column on the attendance tab.
+  if (!isWarCheckInOpen()) return;
 
   try {
     const result = await attendanceService.checkIn(newState.id);

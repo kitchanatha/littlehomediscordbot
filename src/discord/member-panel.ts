@@ -18,6 +18,7 @@ import type { ClassService } from "../services/class-service.js";
 import type { QueueService } from "../services/queue-service.js";
 import { env } from "../config/env.js";
 import { postAnnouncement, postAnnouncements, chunkMessage } from "./sticky-panels.js";
+import { isWarCheckInOpen, WAR_CHECKIN_CLOSED_MESSAGE } from "../utils/war-window.js";
 
 function isAdminInteraction(interaction: ButtonInteraction): boolean {
   const roles = interaction.member?.roles;
@@ -110,7 +111,7 @@ export function buildWarCheckinOnlyMessage() {
     .setDescription(
       [
         "Click below to mark yourself present for today's War.\nคลิกด้านล่างเพื่อเช็คอินวอร์วันนี้",
-        "สามารถเช็คอินได้ตั้งแต่ 05.00-สิ้นสุดวอร์",
+        "เช็คอินได้เฉพาะวันอังคาร พฤหัสบดี และอาทิตย์ เวลา 05.00-23.59 น.",
         "",
         "**สรุปวอร์** — Admin/Guild Leader only: posts a summary of who has and hasn't checked in.",
       ].join("\n")
@@ -331,6 +332,10 @@ export async function handlePanelButton(
     }
     case PANEL_BUTTON_IDS.warCheckin: {
       await interaction.deferReply({ ephemeral: true });
+      if (!isWarCheckInOpen()) {
+        await interaction.editReply(WAR_CHECKIN_CLOSED_MESSAGE);
+        return;
+      }
       try {
         const result = await attendanceService.checkIn(interaction.user.id);
         await interaction.editReply(
