@@ -110,6 +110,7 @@ export function buildWarCheckinOnlyMessage() {
     .setDescription(
       [
         "Click below to mark yourself present for today's War.\nคลิกด้านล่างเพื่อเช็คอินวอร์วันนี้",
+        "สามารถเช็คอินได้ตั้งแต่ 05.00-สิ้นสุดวอร์",
         "",
         "**สรุปวอ** — Admin/Guild Leader only: posts a summary of who has and hasn't checked in.",
       ].join("\n")
