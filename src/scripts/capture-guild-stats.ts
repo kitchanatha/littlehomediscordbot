@@ -18,6 +18,7 @@ import { readFileSync } from "node:fs";
 import { env } from "../config/env.js";
 import { sheetsClient } from "../google/sheets-client.js";
 import { namesMatch } from "../utils/normalize.js";
+import { bangkokDay } from "../utils/war-window.js";
 
 const spreadsheetId = env.GOOGLE_SHEET_ID;
 const HISTORY_SHEET = "GuildStats_History";
@@ -43,7 +44,9 @@ async function main() {
     process.exit(1);
   }
 
-  const capturedAt = new Date().toISOString().slice(0, 10);
+  // Bangkok calendar date (a capture at 01:00 Bangkok on the 6th is still the 5th in UTC).
+  const day = bangkokDay();
+  const capturedAt = `${day.year}-${String(day.month).padStart(2, "0")}-${String(day.day).padStart(2, "0")}`;
 
   const historyRows = (
     await sheetsClient.spreadsheets.values.get({ spreadsheetId, range: `${HISTORY_SHEET}!A2:E` })
@@ -82,6 +85,8 @@ async function main() {
     const historicalChange = prev ? e.historicalContribution - prev.historicalContribution : "";
     return [e.characterName, e.combatPower, cpChange, e.weeklyContribution, e.historicalContribution, historicalChange, capturedAt];
   });
+  // Clear first so a smaller roster than last week doesn't leave stale rows underneath.
+  await sheetsClient.spreadsheets.values.clear({ spreadsheetId, range: `${LATEST_SHEET}!A2:G2000` });
   await sheetsClient.spreadsheets.values.update({
     spreadsheetId,
     range: `${LATEST_SHEET}!A2:G${latestRows.length + 1}`,
@@ -95,7 +100,11 @@ async function main() {
   const memberRows = (await sheetsClient.spreadsheets.values.get({ spreadsheetId, range: "Members!A2:D" })).data.values ?? [];
   const memberUpdates: { range: string; values: (string | number)[][] }[] = [];
   for (const e of entries) {
-    const idx = memberRows.findIndex((r) => namesMatch(r[3] ?? "", e.characterName));
+    // Exact name first: several members' names differ only by Thai tone marks, which namesMatch
+    // ignores, so a bare fuzzy findIndex can hand one member's numbers to a look-alike.
+    const exactName = e.characterName.normalize("NFC").trim();
+    let idx = memberRows.findIndex((r) => (r[3] ?? "").normalize("NFC").trim() === exactName);
+    if (idx < 0) idx = memberRows.findIndex((r) => namesMatch(r[3] ?? "", e.characterName));
     if (idx < 0) {
       console.warn(`WARN "${e.characterName}" not found on Members tab — skipping roster update (still logged to history).`);
       continue;
