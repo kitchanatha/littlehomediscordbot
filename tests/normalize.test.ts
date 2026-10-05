@@ -12,6 +12,17 @@ describe("coreName", () => {
   it("still distinguishes genuinely different names", () => {
     expect(coreName("Bellamie")).not.toBe(coreName("Claude"));
   });
+
+  it("keeps names written only in Korean, kana or CJK instead of collapsing them to empty", () => {
+    // Real bug: these all stripped to "" and so "matched" each other.
+    expect(coreName("카오만뿌")).not.toBe("");
+    expect(coreName("_キツネセルク_")).toBe(coreName("キツネセルク"));
+    expect(coreName("貓女神の愛")).not.toBe("");
+  });
+
+  it("still ignores a leading decoration character on a Latin/Thai name", () => {
+    expect(coreName("シคิววัดกลาง")).toBe(coreName("คิววัดกลาง"));
+  });
 });
 
 describe("namesMatch", () => {
@@ -24,6 +35,16 @@ describe("namesMatch", () => {
     expect(namesMatch("Amojoeee/NinjaRed-N-", "NinjaRed-N-")).toBe(true);
     expect(namesMatch("Amojoeee/NinjaRed-N-", "Amojoeee")).toBe(true);
     expect(namesMatch("NinjaRed-N-", "Amojoeee/NinjaRed-N-")).toBe(true);
+  });
+
+  it("does not treat different non-Latin/Thai names as the same name", () => {
+    expect(namesMatch("카오만뿌", "キツネセルク")).toBe(false);
+    expect(namesMatch("貓女神の愛", "_キツネセルク_")).toBe(false);
+    expect(namesMatch("카오만뿌", "카오만뿌")).toBe(true);
+  });
+
+  it("never matches names that reduce to nothing at all (emoji/symbols only)", () => {
+    expect(namesMatch("😀", "🎉")).toBe(false);
   });
 
   it("does not match unrelated names", () => {

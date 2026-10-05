@@ -177,7 +177,14 @@ export class GoogleSheetsMemberRepository implements MemberRepository {
         ]],
       },
     });
-    await this.applyCharacterNameColor(member.discordId, member.className);
+    // The Members row is already saved at this point, so a Sheets hiccup (rate limit, 5xx) while
+    // coloring it must not surface as a registration failure — the member would see an error,
+    // retry, and get "already registered" (it happened live). Best-effort, like the display tab.
+    try {
+      await this.applyCharacterNameColor(member.discordId, member.className);
+    } catch (err) {
+      console.error(`WARN Failed to color Members row for ${member.memberId}`, err);
+    }
     await this.addToDisplaySheet(member.characterName, member.className);
   }
 
