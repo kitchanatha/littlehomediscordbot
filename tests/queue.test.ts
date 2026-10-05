@@ -142,6 +142,26 @@ describe("QueueService", () => {
     expect(queueRepo.history[0].action).toBe("ENQUEUE");
   });
 
+  it("a Card join and an Accessory join at the same instant get different entry and history IDs", async () => {
+    // Real Sheets reads take time; simulate that so both joins would read the same ID list if they
+    // were allowed to run in parallel (the live bug: both minted the same QueueEntryID).
+    const slowIds = queueRepo.getAllEntryIds.bind(queueRepo);
+    queueRepo.getAllEntryIds = async () => {
+      const ids = await slowIds();
+      await new Promise((r) => setTimeout(r, 10));
+      return ids;
+    };
+
+    const [card, accessory] = await Promise.all([
+      service.enqueue({ targetDiscordId: "user1", queueType: "Card", changedByDiscordId: "user1" }),
+      service.enqueue({ targetDiscordId: "user2", queueType: "Accessory", changedByDiscordId: "user2" }),
+    ]);
+
+    expect(card.queueEntryId).not.toBe(accessory.queueEntryId);
+    expect(new Set(queueRepo.entries.map((e) => e.queueEntryId)).size).toBe(2);
+    expect(new Set(queueRepo.history.map((h) => h.historyId)).size).toBe(2);
+  });
+
   it("member joins Accessory queue simultaneously", async () => {
     await service.enqueue({ targetDiscordId: "user1", queueType: "Card", changedByDiscordId: "user1" });
     const entry = await service.enqueue({ targetDiscordId: "user1", queueType: "Accessory", changedByDiscordId: "user1" });

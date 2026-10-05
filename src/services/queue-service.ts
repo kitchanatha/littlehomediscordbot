@@ -8,7 +8,11 @@ import type { ClassService } from "./class-service.js";
 export const QUEUE_COOLDOWN_DAYS = 3;
 
 export class QueueService {
-  private locks = new Map<string, Promise<void>>();
+  // One lock for BOTH queues, not one per queue type: Card and Accessory entries live in the same
+  // Queue_Entries/Queue_History sheets and draw their IDs from the same counter. Per-type locks let a
+  // Card join and an Accessory join in the same instant both read the same ID list and mint the same
+  // QueueEntryID (it happened live), after which rows found by that ID overwrote each other.
+  private lock: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly queueRepository: QueueRepository,
@@ -16,11 +20,9 @@ export class QueueService {
     private readonly classService: ClassService
   ) {}
 
-  private async withLock<T>(queueType: string, fn: () => Promise<T>): Promise<T> {
-    const lock = this.locks.get(queueType) || Promise.resolve();
-    const resultPromise = lock.then(fn);
-    const nextLock = resultPromise.then(() => {}).catch(() => {});
-    this.locks.set(queueType, nextLock);
+  private async withLock<T>(fn: () => Promise<T>): Promise<T> {
+    const resultPromise = this.lock.then(fn);
+    this.lock = resultPromise.then(() => {}).catch(() => {});
     return resultPromise;
   }
 
@@ -33,7 +35,7 @@ export class QueueService {
     queueType: QueueType;
     changedByDiscordId: string;
   }): Promise<QueueEntry> {
-    return this.withLock(input.queueType, async () => {
+    return this.withLock(async () => {
       // 1. Confirm registered member
       const member = await this.memberRepository.findByDiscordId(input.targetDiscordId);
       if (!member) {
@@ -113,7 +115,7 @@ export class QueueService {
     queueType: QueueType;
     changedByDiscordId: string;
   }): Promise<{ cooldownUntil: string }> {
-    return this.withLock(input.queueType, async () => {
+    return this.withLock(async () => {
       // 1. Find active entry
       const entry = await this.queueRepository.findActiveEntry(input.targetDiscordId, input.queueType);
       if (!entry) {
@@ -237,7 +239,7 @@ export class QueueService {
     const timestamp = this.now();
 
     for (const queueType of queueTypes) {
-      await this.withLock(queueType, async () => {
+      await this.withLock(async () => {
         const entry = await this.queueRepository.findActiveEntry(discordId, queueType);
         if (!entry) return;
 
