@@ -2,6 +2,7 @@ import { sheets_v4 } from "googleapis";
 import { env } from "../config/env.js";
 import { sheetsClient } from "../google/sheets-client.js";
 import { coreName, namesMatch, normalizeName } from "../utils/normalize.js";
+import { withSheetDeleteLock } from "../utils/sheet-lock.js";
 import type { AttendanceRepository } from "./attendance-repository.js";
 import type { AttendanceResult, AttendanceStatus } from "../types/attendance.js";
 
@@ -300,6 +301,10 @@ export class GoogleSheetsAttendanceRepository implements AttendanceRepository {
   }
 
   async resolvePendingCheckIns(discordId: string): Promise<{ status: AttendanceStatus; at: Date }[]> {
+    return withSheetDeleteLock(() => this.resolvePendingCheckInsLocked(discordId));
+  }
+
+  private async resolvePendingCheckInsLocked(discordId: string): Promise<{ status: AttendanceStatus; at: Date }[]> {
     const sheetId = await this.ensurePendingSheetExists();
     const rows = (await this.values(`${PENDING_SHEET}!A2:E`));
 
@@ -424,6 +429,10 @@ export class GoogleSheetsAttendanceRepository implements AttendanceRepository {
 
   async deleteMemberAttendance(characterName: string, className: string): Promise<void> {
     await this.ensureSheetIds();
+    await withSheetDeleteLock(() => this.deleteMemberAttendanceLocked(characterName, className));
+  }
+
+  private async deleteMemberAttendanceLocked(characterName: string, className: string): Promise<void> {
     const requests: sheets_v4.Schema$Request[] = [];
 
     const masterSheetId = this.sheetIds.get(MASTER_SHEET);

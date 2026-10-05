@@ -3,6 +3,7 @@ import { env } from "../config/env.js";
 import { sheetsClient } from "../google/sheets-client.js";
 import { QueueEntry, QueueHistory, QueueType } from "../types/queue.js";
 import { hexToRgb } from "../utils/color.js";
+import { withSheetDeleteLock } from "../utils/sheet-lock.js";
 import { QueueRepository, VisualQueueMember } from "./queue-repository.js";
 
 const SHEETS = {
@@ -169,26 +170,28 @@ export class GoogleSheetsQueueRepository implements QueueRepository {
     const sheetId = this.sheetIds.get(SHEETS.queueEntries);
     if (sheetId === undefined) throw new Error("Queue_Entries sheet missing");
 
-    const rows = await this.values(`${SHEETS.queueEntries}!A2:A`);
-    const rowIndex = rows.findIndex((r) => r[0] === queueEntryId);
-    if (rowIndex < 0) return; // Already gone or not found
+    await withSheetDeleteLock(async () => {
+      const rows = await this.values(`${SHEETS.queueEntries}!A2:A`);
+      const rowIndex = rows.findIndex((r) => r[0] === queueEntryId);
+      if (rowIndex < 0) return; // Already gone or not found
 
-    const sheetRow = rowIndex + 1;
+      const sheetRow = rowIndex + 1;
 
-    await this.sheets.spreadsheets.batchUpdate({
-      spreadsheetId: this.spreadsheetId,
-      requestBody: {
-        requests: [{
-          deleteDimension: {
-            range: {
-              sheetId,
-              dimension: "ROWS",
-              startIndex: sheetRow,
-              endIndex: sheetRow + 1,
+      await this.sheets.spreadsheets.batchUpdate({
+        spreadsheetId: this.spreadsheetId,
+        requestBody: {
+          requests: [{
+            deleteDimension: {
+              range: {
+                sheetId,
+                dimension: "ROWS",
+                startIndex: sheetRow,
+                endIndex: sheetRow + 1,
+              },
             },
-          },
-        }],
-      },
+          }],
+        },
+      });
     });
   }
 
@@ -372,17 +375,19 @@ export class GoogleSheetsQueueRepository implements QueueRepository {
     const sheetId = this.sheetIds.get(SHEETS.queueHistory);
     if (sheetId === undefined) return;
 
-    const rows = await this.values(`${SHEETS.queueHistory}!A2:J`);
-    const idxs = rows
-      .map((r, i) => ({ match: r[4] === discordId, i }))
-      .filter((x) => x.match)
-      .map((x) => x.i)
-      .sort((a, b) => b - a);
-    if (idxs.length === 0) return;
+    await withSheetDeleteLock(async () => {
+      const rows = await this.values(`${SHEETS.queueHistory}!A2:J`);
+      const idxs = rows
+        .map((r, i) => ({ match: r[4] === discordId, i }))
+        .filter((x) => x.match)
+        .map((x) => x.i)
+        .sort((a, b) => b - a);
+      if (idxs.length === 0) return;
 
-    const requests = idxs.map((idx) => ({
-      deleteDimension: { range: { sheetId, dimension: "ROWS", startIndex: idx + 1, endIndex: idx + 2 } },
-    }));
-    await this.sheets.spreadsheets.batchUpdate({ spreadsheetId: this.spreadsheetId, requestBody: { requests } });
+      const requests = idxs.map((idx) => ({
+        deleteDimension: { range: { sheetId, dimension: "ROWS", startIndex: idx + 1, endIndex: idx + 2 } },
+      }));
+      await this.sheets.spreadsheets.batchUpdate({ spreadsheetId: this.spreadsheetId, requestBody: { requests } });
+    });
   }
 }

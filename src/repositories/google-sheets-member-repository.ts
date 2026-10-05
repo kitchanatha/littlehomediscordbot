@@ -5,6 +5,7 @@ import type { HistoryEntry, LegacyMember, Member } from "../types/member.js";
 import type { ClassConfig } from "../types/class.js";
 import { normalizeName, coreName, namesMatch } from "../utils/normalize.js";
 import { hexToRgb } from "../utils/color.js";
+import { withSheetDeleteLock } from "../utils/sheet-lock.js";
 import type { MemberRepository } from "./member-repository.js";
 
 const SHEETS = {
@@ -819,14 +820,16 @@ export class GoogleSheetsMemberRepository implements MemberRepository {
       await this.ensureSheetIds();
       const sheetId = this.sheetIds.get(DISPLAY_SHEET);
       if (sheetId === undefined) return;
-      const rows = await this.values(`${DISPLAY_SHEET}!A2:A`);
-      const idx = rows.findIndex((r) => namesMatch(r[0] ?? "", characterName));
-      if (idx < 0) return;
-      await this.sheets.spreadsheets.batchUpdate({
-        spreadsheetId: this.spreadsheetId,
-        requestBody: {
-          requests: [{ deleteDimension: { range: { sheetId, dimension: "ROWS", startIndex: idx + 1, endIndex: idx + 2 } } }],
-        },
+      await withSheetDeleteLock(async () => {
+        const rows = await this.values(`${DISPLAY_SHEET}!A2:A`);
+        const idx = rows.findIndex((r) => namesMatch(r[0] ?? "", characterName));
+        if (idx < 0) return;
+        await this.sheets.spreadsheets.batchUpdate({
+          spreadsheetId: this.spreadsheetId,
+          requestBody: {
+            requests: [{ deleteDimension: { range: { sheetId, dimension: "ROWS", startIndex: idx + 1, endIndex: idx + 2 } } }],
+          },
+        });
       });
     } catch (err) {
       console.error(`WARN Failed to remove "${characterName}" from "${DISPLAY_SHEET}" tab`, err);
@@ -839,24 +842,32 @@ export class GoogleSheetsMemberRepository implements MemberRepository {
     const auditSheetId = this.sheetIds.get(SHEETS.auditLog);
     if (membersSheetId === undefined) throw new Error(`Sheet "${SHEETS.members}" not found`);
 
-    const memberRowIndex = await this.findMemberRow(member.discordId);
-    const requests: sheets_v4.Schema$Request[] = [
-      { deleteDimension: { range: { sheetId: membersSheetId, dimension: "ROWS", startIndex: memberRowIndex, endIndex: memberRowIndex + 1 } } },
-    ];
-
-    if (auditSheetId !== undefined) {
-      const auditRows = await this.values(`${SHEETS.auditLog}!A2:I`);
-      const idxs = auditRows
-        .map((r, i) => ({ match: r[1] === member.memberId || r[2] === member.discordId, i }))
-        .filter((x) => x.match)
-        .map((x) => x.i)
-        .sort((a, b) => b - a);
-      for (const idx of idxs) {
-        requests.push({ deleteDimension: { range: { sheetId: auditSheetId, dimension: "ROWS", startIndex: idx + 1, endIndex: idx + 2 } } });
+    await withSheetDeleteLock(async () => {
+      const memberRowIndex = await this.findMemberRow(member.discordId);
+      // Belt and braces: re-read the exact row about to be deleted and refuse if it is not this
+      // member (i.e. something shifted rows since findMemberRow read the sheet).
+      const check = await this.values(`${SHEETS.members}!B${memberRowIndex + 1}`);
+      if (check[0]?.[0] !== member.discordId) {
+        throw new Error(`Refusing to delete Members row ${memberRowIndex + 1}: it no longer belongs to ${member.discordId}`);
       }
-    }
+      const requests: sheets_v4.Schema$Request[] = [
+        { deleteDimension: { range: { sheetId: membersSheetId, dimension: "ROWS", startIndex: memberRowIndex, endIndex: memberRowIndex + 1 } } },
+      ];
 
-    await this.sheets.spreadsheets.batchUpdate({ spreadsheetId: this.spreadsheetId, requestBody: { requests } });
+      if (auditSheetId !== undefined) {
+        const auditRows = await this.values(`${SHEETS.auditLog}!A2:I`);
+        const idxs = auditRows
+          .map((r, i) => ({ match: r[1] === member.memberId || r[2] === member.discordId, i }))
+          .filter((x) => x.match)
+          .map((x) => x.i)
+          .sort((a, b) => b - a);
+        for (const idx of idxs) {
+          requests.push({ deleteDimension: { range: { sheetId: auditSheetId, dimension: "ROWS", startIndex: idx + 1, endIndex: idx + 2 } } });
+        }
+      }
+
+      await this.sheets.spreadsheets.batchUpdate({ spreadsheetId: this.spreadsheetId, requestBody: { requests } });
+    });
 
     await this.removeFromDisplaySheet(member.characterName);
     await this.updateNameInTeamRosters(member.characterName, null);
@@ -870,6 +881,7 @@ export class GoogleSheetsMemberRepository implements MemberRepository {
   private async deleteGuildStats(characterName: string): Promise<void> {
     try {
       await this.ensureSheetIds();
+      await withSheetDeleteLock(async () => {
       const historySheetId = this.sheetIds.get(GUILD_STATS_HISTORY_SHEET);
       if (historySheetId !== undefined) {
         const historyRows = await this.values(`${GUILD_STATS_HISTORY_SHEET}!A2:E`);
@@ -903,6 +915,7 @@ export class GoogleSheetsMemberRepository implements MemberRepository {
           });
         }
       }
+      });
     } catch (err) {
       console.error(`WARN Failed to delete guild stats for "${characterName}"`, err);
     }
