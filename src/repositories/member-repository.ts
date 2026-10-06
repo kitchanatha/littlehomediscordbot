@@ -47,4 +47,6 @@ export interface MemberRepository {
    * จัดตี้/หน้างานอีลิท team rosters — used when a member leaves and all their data should go.
    */
   deleteMemberCompletely(member: Member): Promise<void>;
+  /** Blanks the member's name from the war-planning tabs (Elite, both ปาร์ตี้ days, ศึกชิงปราสาท); returns cells cleared. */
+  removeFromWarRosters(characterName: string): Promise<number>;
 }

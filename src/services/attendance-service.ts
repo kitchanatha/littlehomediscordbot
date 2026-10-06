@@ -30,6 +30,18 @@ export class AttendanceService {
     }
   }
 
+  // A member who is skipping the war shouldn't keep a slot in the planning grids (Elite, ปาร์ตี้
+  // วันอังคาร/พฤหัส, ศึกชิงปราสาท) — blanking it opens the slot back up. Best-effort: never allowed to
+  // fail the leave request itself.
+  private async removeFromWarPlanning(characterName: string): Promise<void> {
+    try {
+      const cleared = await this.memberRepository.removeFromWarRosters(characterName);
+      if (cleared > 0) console.log(`INFO Removed ${characterName} from ${cleared} war roster slot(s) after leave request`);
+    } catch (error) {
+      console.error(`ERROR Failed to remove ${characterName} from war rosters after leave request`, error);
+    }
+  }
+
   async checkIn(discordId: string): Promise<{ characterName: string; dateLabel: string }> {
     const member = await this.resolveActiveMember(discordId);
     const at = new Date();
@@ -43,6 +55,7 @@ export class AttendanceService {
     const at = new Date();
     const result = await this.attendanceRepository.markAttendance(member.characterName, member.className, "แจ้งลาแล้ว", at);
     if (result.markedMaster) await this.mirrorToRoster(member.characterName, "แจ้งลาแล้ว", at);
+    await this.removeFromWarPlanning(member.characterName);
     return { characterName: member.characterName, dateLabel: result.dateLabel };
   }
 

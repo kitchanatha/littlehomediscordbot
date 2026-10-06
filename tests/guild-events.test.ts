@@ -75,6 +75,7 @@ class FakeMemberRepo implements MemberRepository {
         if (newUsername) this.members[i].discordUsername = newUsername;
     }
   }
+  async removeFromWarRosters(_name: string) { return 0; }
   async deleteMemberCompletely(member: Member) {
     const i = this.members.findIndex(m => m.memberId === member.memberId);
     if (i >= 0) this.members.splice(i, 1);

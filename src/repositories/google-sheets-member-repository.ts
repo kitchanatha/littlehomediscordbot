@@ -6,6 +6,7 @@ import type { ClassConfig } from "../types/class.js";
 import { normalizeName, coreName, namesMatch } from "../utils/normalize.js";
 import { hexToRgb } from "../utils/color.js";
 import { withSheetDeleteLock } from "../utils/sheet-lock.js";
+import { WAR_ROSTER_RANGE, WAR_ROSTER_SHEETS, findRosterCells, a1 as rosterCellA1 } from "../utils/war-roster-cells.js";
 import type { MemberRepository } from "./member-repository.js";
 
 const SHEETS = {
@@ -26,22 +27,6 @@ const SHEETS = {
 const GAME_ROSTER_SHEET = "Members";
 // Plain two-column (CharacterName, War Check-in) display tab kept in sync alongside Members.
 const DISPLAY_SHEET = "Little Home member";
-// War-planning grid (Team A-D x party columns) — typed character names, autocompleted and
-// colored by class via native Sheets data validation/conditional formatting (see
-// src/scripts/*jadti* history). Class changes and leaving the guild already reflect live via
-// that formatting; only a rename needs the bot's help, since Sheets can't rewrite arbitrary
-// already-typed cell text on its own.
-const JADTI_SHEET = "จัดตี้";
-const JADTI_RANGE = "A1:H50";
-// Elite-run team roster (Team A rows 4-8, Team B rows 13-17) — same "plain typed names, not
-// formulas" situation as จัดตี้, so it needs the same rename/leave handling.
-const ELITE_SHEET = "หน้างานอีลิท";
-const ELITE_RANGE = "A1:H50";
-// War-party planning grids (main group Team A-C + second group Team ฟ้า/จอม/ปลด/ดินแดง) — same
-// typed-name-cell design as จัดตี้/หน้างานอีลิท, so they need the same rename/leave handling.
-const PARTY_TUE_SHEET = "ปาร์ตี้วันอังคาร";
-const PARTY_THU_SHEET = "ปาร์ตี้วันพฤหัส";
-const PARTY_RANGE = "A1:H60";
 const MEMBERS_COMBAT_POWER_COL = "K";
 const MEMBERS_COMBAT_POWER_COL_INDEX0 = 10; // K is the 11th column, 0-indexed 10
 // Weekly Rating/Contribution tracker (see src/scripts/capture-guild-stats.ts) — History is an
@@ -227,38 +212,41 @@ export class GoogleSheetsMemberRepository implements MemberRepository {
     }
   }
 
-  // Scans the จัดตี้ and หน้างานอีลิท team-roster grids for cells still holding the old name (an
-  // admin may have typed it into any team block) and rewrites or blanks them — these don't
-  // otherwise stay in sync since they're plain typed cells, not formulas. Pass `newValue: null`
-  // to clear the cell instead of renaming it (used when a member leaves the guild, so their
-  // slot actually opens back up instead of just showing grayed-out via conditional formatting).
-  private async updateNameInTeamRosters(oldName: string, newValue: string | null): Promise<void> {
-    for (const { sheet, range } of [
-      { sheet: JADTI_SHEET, range: JADTI_RANGE },
-      { sheet: ELITE_SHEET, range: ELITE_RANGE },
-      { sheet: PARTY_TUE_SHEET, range: PARTY_RANGE },
-      { sheet: PARTY_THU_SHEET, range: PARTY_RANGE },
-    ]) {
+  // Scans the war-planning grids (WAR_ROSTER_SHEETS) for cells still holding `oldName` and rewrites
+  // or blanks them — these are plain typed cells, not formulas, so they don't otherwise stay in
+  // sync. Pass `newValue: null` to clear the cell instead of renaming it (used when a member
+  // leaves the guild or requests leave from a war, so their slot opens back up instead of just
+  // showing grayed-out via conditional formatting). Only the name rows of each team block are
+  // touched, never titles like "Team ฟา [ Fariszme ]", and matching is exact-first (see
+  // findRosterCells) so look-alike names can't clear each other's slots. Returns cells changed.
+  private async updateNameInTeamRosters(oldName: string, newValue: string | null): Promise<number> {
+    let changed = 0;
+    let otherNames: Set<string> | null = null;
+    for (const sheet of WAR_ROSTER_SHEETS) {
       try {
-        const rows = await this.values(`${sheet}!${range}`);
-        const updates: { range: string; values: string[][] }[] = [];
-        rows.forEach((row, r) => {
-          row.forEach((cell, c) => {
-            if (cell && namesMatch(cell, oldName)) {
-              const colLetter = String.fromCharCode(65 + c);
-              updates.push({ range: `${sheet}!${colLetter}${r + 1}`, values: [[newValue ?? ""]] });
-            }
-          });
-        });
-        if (updates.length === 0) continue;
+        const rows = await this.values(`${sheet}!${WAR_ROSTER_RANGE}`);
+        if (otherNames === null) {
+          const all = await this.values(`${SHEETS.members}!D2:D`);
+          otherNames = new Set(all.map((r) => String(r[0] ?? "").normalize("NFC").trim().toLowerCase()).filter((n) => n && n !== oldName.normalize("NFC").trim().toLowerCase()));
+        }
+        const cells = findRosterCells(rows, oldName, otherNames);
+        if (cells.length === 0) continue;
         await this.sheets.spreadsheets.values.batchUpdate({
           spreadsheetId: this.spreadsheetId,
-          requestBody: { valueInputOption: "RAW", data: updates },
+          requestBody: { valueInputOption: "RAW", data: cells.map((c) => ({ range: rosterCellA1(sheet, c), values: [[newValue ?? ""]] })) },
         });
+        changed += cells.length;
       } catch (err) {
         console.error(`WARN Failed to update "${oldName}" on "${sheet}" tab`, err);
       }
     }
+    return changed;
+  }
+
+  // Blanks the member's name from every war-planning tab — called when they request leave from a
+  // war. Best-effort per tab; returns how many cells were cleared.
+  async removeFromWarRosters(characterName: string): Promise<number> {
+    return this.updateNameInTeamRosters(characterName, null);
   }
 
   private async colorDisplaySheetRow(characterName: string, className: string): Promise<void> {
