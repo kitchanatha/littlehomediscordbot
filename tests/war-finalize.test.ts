@@ -66,3 +66,62 @@ describe("finalizePreviousWarDayIfDue", () => {
     expect(await finalizePreviousWarDayIfDue(svc, done, now)).toBe(true);
   });
 });
+
+import { formatWarDay, latestWarDay } from "../src/utils/war-window.js";
+
+describe("latestWarDay (what สรุปวอร์ summarises)", () => {
+  // 2026-10-06 Tue, 07 Wed, 08 Thu, 09 Fri, 10 Sat, 11 Sun, 12 Mon. Bangkok = UTC+7.
+  it("is today once check-in has opened on a war day", () => {
+    expect(latestWarDay(new Date("2026-10-06T08:00:00Z"))).toEqual({ year: 2026, month: 10, day: 6 }); // Tue 15:00
+    expect(latestWarDay(new Date("2026-10-06T16:59:00Z"))).toEqual({ year: 2026, month: 10, day: 6 }); // Tue 23:59
+  });
+
+  it("falls back to the last war just after midnight (the case in the screenshot)", () => {
+    // Wed 7 Oct 02:08 Bangkok = Tue 19:08Z -> still Tuesday's war, not an empty Wednesday.
+    expect(latestWarDay(new Date("2026-10-06T19:08:00Z"))).toEqual({ year: 2026, month: 10, day: 6 });
+  });
+
+  it("stays on the last war through non-war days", () => {
+    expect(latestWarDay(new Date("2026-10-09T08:00:00Z"))).toEqual({ year: 2026, month: 10, day: 8 }); // Fri -> Thu
+    expect(latestWarDay(new Date("2026-10-12T08:00:00Z"))).toEqual({ year: 2026, month: 10, day: 11 }); // Mon -> Sun
+  });
+
+  it("uses the previous war before check-in opens on a war day", () => {
+    // Thu 8 Oct 03:00 Bangkok (= Wed 20:00Z): check-in not open yet -> Tuesday's war.
+    expect(latestWarDay(new Date("2026-10-07T20:00:00Z"))).toEqual({ year: 2026, month: 10, day: 6 });
+    // Thu 05:00 Bangkok = Wed 22:00Z: now open -> today.
+    expect(latestWarDay(new Date("2026-10-07T22:00:00Z"))).toEqual({ year: 2026, month: 10, day: 8 });
+  });
+
+  it("formats the label with the Thai weekday and Buddhist two-digit year", () => {
+    expect(formatWarDay({ year: 2026, month: 10, day: 6 })).toBe("วันอังคารที่ 6/10/69");
+    expect(formatWarDay({ year: 2026, month: 10, day: 11 })).toBe("วันอาทิตย์ที่ 11/10/69");
+  });
+});
+
+describe("AttendanceService.getWarSummary", () => {
+  it("reports the latest war's attendance after check-in closes, ignoring members who joined later", async () => {
+    const getPresentAndLeaveTodayNormalizedNames = vi.fn().mockResolvedValue({ present: new Set(["alice"]), leave: new Set(["bob"]) });
+    const members = [
+      member("Alice", "2026-09-06T13:00:00Z"),
+      member("Bob", "2026-09-06T13:00:00Z"),
+      member("Cara", "2026-09-06T13:00:00Z"),
+      member("NewGuy", "2026-10-07T01:00:00Z"), // registered Wed 08:00 Bangkok, after Tuesday's war
+    ];
+    const service = new AttendanceService(
+      { getPresentAndLeaveTodayNormalizedNames } as any,
+      { getAllActiveMembers: async () => members } as any
+    );
+
+    // Wed 7 Oct 02:08 Bangkok
+    const s = await service.getWarSummary(new Date("2026-10-06T19:08:00Z"));
+
+    // The column looked up is Tuesday 6 Oct, not Wednesday.
+    const asked = getPresentAndLeaveTodayNormalizedNames.mock.calls[0][0] as Date;
+    expect(new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok" }).format(asked)).toBe("2026-10-06");
+    expect(s.warLabel).toBe("วันอังคารที่ 6/10/69");
+    expect([s.presentCount, s.leaveCount, s.absentCount]).toEqual([1, 1, 1]);
+    expect(s.leaveNames).toEqual(["Bob"]);
+    expect(s.absentNames).toEqual(["Cara"]); // NewGuy is not counted absent
+  });
+});

@@ -54,3 +54,30 @@ export function bangkokEndOfDay(day: BangkokDay): Date {
 }
 
 const WAR_WEEKDAYS_NUM = new Set([0, 2, 4]); // Sun, Tue, Thu
+
+// The war a summary should describe: today if it is a war day and check-in has opened (05:00),
+// otherwise the most recent war day before that. Outside war days (or before check-in opens on one)
+// "today" has no attendance column, so summarising it would report everyone as absent.
+export function latestWarDay(at: Date = new Date()): BangkokDay {
+  const today = bangkokDay(at);
+  const hour = Number(
+    new Intl.DateTimeFormat("en-US", { hour: "numeric", hourCycle: "h23", timeZone: "Asia/Bangkok" })
+      .formatToParts(at)
+      .find((p) => p.type === "hour")?.value ?? "0"
+  );
+  if (isWarDay(today) && hour >= OPEN_HOUR) return today;
+  for (let back = 1; back <= 7; back++) {
+    const d = new Date(Date.UTC(today.year, today.month - 1, today.day - back));
+    const day = { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1, day: d.getUTCDate() };
+    if (isWarDay(day)) return day;
+  }
+  return today; // unreachable: every week has war days
+}
+
+const THAI_WEEKDAYS = ["อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์"];
+
+// e.g. "วันอังคารที่ 6/10/69" (Buddhist-era two-digit year, matching the sheet's War column headers).
+export function formatWarDay(day: BangkokDay): string {
+  const weekday = THAI_WEEKDAYS[new Date(Date.UTC(day.year, day.month - 1, day.day)).getUTCDay()];
+  return `วัน${weekday}ที่ ${day.day}/${day.month}/${(day.year + 543) % 100}`;
+}

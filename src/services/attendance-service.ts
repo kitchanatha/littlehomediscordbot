@@ -2,7 +2,7 @@ import type { MemberRepository } from "../repositories/member-repository.js";
 import type { AttendanceRepository } from "../repositories/attendance-repository.js";
 import type { Member } from "../types/member.js";
 import { normalizeName } from "../utils/normalize.js";
-import { bangkokEndOfDay, bangkokNoon, type BangkokDay } from "../utils/war-window.js";
+import { bangkokEndOfDay, bangkokNoon, formatWarDay, latestWarDay, type BangkokDay } from "../utils/war-window.js";
 import { UserError } from "./member-service.js";
 
 export class AttendanceService {
@@ -86,15 +86,23 @@ export class AttendanceService {
 
   /**
    * Present / leave (ลาวอร์, notified absence) / absent (ขาดวอร์, missing without notice) counts and
-   * names for the given date (defaults to today) — backs the "สรุปวอร์" War summary button.
+   * names — backs the "สรุปวอร์" War summary button. Summarises the most recent war whose check-in has
+   * opened (see latestWarDay), so after check-in closes it keeps reporting that war instead of an
+   * empty "today". Members who registered after that war ended are not counted absent for it.
    */
   async getWarSummary(
     at: Date = new Date()
-  ): Promise<{ presentCount: number; leaveCount: number; absentCount: number; leaveNames: string[]; absentNames: string[] }> {
-    const [members, status] = await Promise.all([
+  ): Promise<{ warLabel: string; presentCount: number; leaveCount: number; absentCount: number; leaveNames: string[]; absentNames: string[] }> {
+    const day = latestWarDay(at);
+    const endOfDay = bangkokEndOfDay(day).getTime();
+    const [allMembers, status] = await Promise.all([
       this.memberRepository.getAllActiveMembers(),
-      this.attendanceRepository.getPresentAndLeaveTodayNormalizedNames(at),
+      this.attendanceRepository.getPresentAndLeaveTodayNormalizedNames(bangkokNoon(day)),
     ]);
+    const members = allMembers.filter((m) => {
+      const joined = Date.parse(m.joinedDate);
+      return Number.isNaN(joined) || joined <= endOfDay;
+    });
 
     let presentCount = 0;
     const leaveNames: string[] = [];
@@ -108,7 +116,7 @@ export class AttendanceService {
     leaveNames.sort((a, b) => a.localeCompare(b));
     absentNames.sort((a, b) => a.localeCompare(b));
 
-    return { presentCount, leaveCount: leaveNames.length, absentCount: absentNames.length, leaveNames, absentNames };
+    return { warLabel: formatWarDay(day), presentCount, leaveCount: leaveNames.length, absentCount: absentNames.length, leaveNames, absentNames };
   }
 
   /** Checks in a specific member by ID — used by the admin check-in panel's buttons. */

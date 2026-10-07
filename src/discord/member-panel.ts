@@ -405,6 +405,7 @@ export async function handlePanelButton(
       try {
         const summary = await attendanceService.getWarSummary();
         const lines = [
+          `สรุปวอร์ ${summary.warLabel}`,
           `สมาชิกที่มาวอร์ ${summary.presentCount} คน, ลาวอร์ ${summary.leaveCount} คน และ ขาดวอร์ ${summary.absentCount} คน`,
           "",
           "รายชื่อสมาชิกที่ลาวอร์",
